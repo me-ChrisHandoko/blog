@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AppI18nModule } from './i18n/i18n.module'; // Standalone I18n module
 import { TestModule } from './test/test.module'; // Development only
+import { UsersModule } from './users/users.module'; // Users module for user management
 
 const developmentModules =
   process.env.NODE_ENV === 'development' ? [TestModule] : [];
@@ -20,6 +21,7 @@ const developmentModules =
     DatabaseModule,
     HealthModule,
     AppI18nModule, // Now using standalone implementation
+    UsersModule,
     ...developmentModules, // Only include TestModule in development
   ],
   controllers: [AppController],

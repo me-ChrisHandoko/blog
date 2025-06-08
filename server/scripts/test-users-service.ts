@@ -119,7 +119,7 @@ async function testUsersService() {
     });
 
     // Test 6: Get user statistics
-    console.log('\n Test 6: Teting user statistics...');
+    console.log('\n Test 6: Testing user statistics...');
     const stats = await usersService.getUserStats(SupportedLanguage.ENGLISH);
     console.log('User statistics:', stats);
 

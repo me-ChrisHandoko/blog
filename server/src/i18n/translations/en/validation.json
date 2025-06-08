@@ -1,0 +1,33 @@
+{
+  "generic": {
+    "required": "{field} is required",
+    "invalid": "Invalid {field} format",
+    "tooShort": "{field} is too short (minimum {min} characters)",
+    "tooLong": "{field} is too long (maximum {max} characters)",
+    "notUnique": "{field} is already taken"
+  },
+  "email": {
+    "invalid": "Invalid email format",
+    "required": "Email is required",
+    "alreadyExists": "Email is already registered"
+  },
+  "password": {
+    "tooWeak": "Password must contain at least 8 characters with a combination of uppercase, lowercase, numbers, and symbols",
+    "required": "Password is required",
+    "mismatch": "Password confirmation does not match"
+  },
+  "name": {
+    "tooShort": "Name must be at least 2 characters",
+    "tooLong": "Name must not exceed 50 characters",
+    "required": "Name is required",
+    "invalidCharacters": "Name can only contain letters and spaces"
+  },
+  "phone": {
+    "invalid": "Invalid phone number format (example: +628123456789)",
+    "required": "Phone number is required"
+  },
+  "language": {
+    "unsupported": "Language not supported. Available languages: {languages}",
+    "required": "Language must be selected"
+  }
+}

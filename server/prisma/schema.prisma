@@ -1,0 +1,364 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"] // Untuk search multilingual
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Model managemen pengguna
+model User {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  password    String
+  role        Role      @default(USER)
+  isActive    Boolean   @default(true)
+  isVerified  Boolean   @default(false)
+  lastLoginAt DateTime?
+
+  // User's preferred language - digunakan sebagai default untuk response
+  preferredLanguage Language @default(ID)
+
+  // Timestamps untuk audit
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Untuk soft delete - data tidak benar-benar dihapus
+
+  // Relasi dengan tabel lain
+  profile     Profile?
+  posts       Post[]
+  comments    Comment[]
+  sessions    Session[]
+  permissions UserPermission[]
+
+  // Audit trail - mencatat siapa yang membuat/mengubah
+  createdBy String?
+  updatedBy String?
+
+  @@map("users") // Nama tabel di database
+}
+
+model Profile {
+  id       String    @id @default(uuid())
+  avatar   String?
+  phone    String?
+  address  String?
+  birthday DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Foreign key - menghubungkan dengan user
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Relation ke tranlation table
+  translations ProfileTranslation[]
+
+  @@map("profiles")
+}
+
+model ProfileTranslation {
+  id        String   @id @default(uuid())
+  language  Language
+  firstName String
+  lastName  String
+  bio       String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Foreign key ke Profile
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  // Constraint: satu profile hanya bisa punya satu translation per bahasa
+  @@unique([profileId, language])
+  @@index([language])
+  @@index([profileId, language])
+  @@map("profile_translations")
+}
+
+// Model management konten
+model Category {
+  id       String  @id @default(uuid())
+  slug     String  @unique // URL - friendly version dari name
+  color    String? // Untuk theming UI
+  isActive Boolean @default(true)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relasi dengan Post
+  posts        Post[]
+  translations CategoryTranslation[]
+
+  @@map("categories")
+}
+
+model CategoryTranslation {
+  id          String   @id @default(uuid())
+  language    Language
+  name        String // Nama kategori dalam bahasa tertentu
+  description String? // Deskripsi dalam bahasa tertentu
+
+  // SEO fields per bahasa - penting untuk multilingual SEO
+  metaTitle       String?
+  metaDescription String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Foreign key
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, language])
+  @@map("category_translations")
+}
+
+model Post {
+  id          String     @id @default(uuid())
+  slug        String     @unique // URL-friendly version dari title
+  status      PostStatus @default(DRAFT)
+  publishedAt DateTime?
+  views       Int        @default(0) // Counter untuk analytics
+  likes       Int        @default(0) // Counter untuk engagement
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Foreign Keys - hubungan dengan tabel lain
+  authorId   String
+  categoryId String
+
+  // Relasi
+  author       User              @relation(fields: [authorId], references: [id])
+  category     Category          @relation(fields: [categoryId], references: [id])
+  comments     Comment[]
+  tags         PostTag[] // Many-to-many relationship
+  translations PostTranslation[] // Multilingual content
+
+  @@map("posts")
+}
+
+model PostTranslation {
+  id       String   @id @default(uuid())
+  language Language
+  title    String
+  content  String   @db.Text // Large content
+  excerpt  String?
+
+  // Slug spesifik untuk bahasa ini (untuk SEO multilingual)
+  // Contoh: /en/posts/hello-world vs /id/posts/halo-dunia
+  languageSlug String
+
+  // SEO fields per bahasa
+  metaTitle       String?
+  metaDescription String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Foreign key
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  // Constraints
+  @@unique([postId, language]) // Satu post = satu translation per bahasa
+  @@unique([language, languageSlug]) // Slug unik per bahasa
+  @@index([language, languageSlug])
+  @@index([postId])
+  @@map("post_translations")
+}
+
+model Tag {
+  id    String  @id @default(uuid())
+  slug  String  @unique
+  color String? // Untuk UI theming
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relasi many-to-many dengan Post
+  posts        PostTag[]
+  translations TagTranslation[]
+
+  @@map("tags")
+}
+
+model TagTranslation {
+  id       String   @id @default(uuid())
+  language Language
+  name     String // Nama tag dalam bahasa tertentu
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Foreign key
+  tagId String
+  tag   Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([tagId, language])
+  @@map("tag_relations")
+}
+
+// Tabel junction untuk hubungan many-to-many Post dengan Tag
+model PostTag {
+  id String @id @default(uuid())
+
+  // Foreign keys
+  postId String
+  tagId  String
+
+  // Relasi
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  // Timestamp kapan tag ditambahkan ke post
+  createdAt DateTime @default(now())
+
+  // Constraint untuk mencegah duplikasi
+  @@unique([postId, tagId])
+  @@map("post_tags")
+}
+
+model Comment {
+  id         String   @id @default(uuid())
+  content    String
+  language   Language
+  isApproved Boolean  @default(false) // Moderasi komentar
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft Delete
+
+  // Foreign keys
+  authorId String
+  postId   String
+  parentId String? // Untuk nested comments (reply)
+
+  // Relasi
+  author  User      @relation(fields: [authorId], references: [id])
+  post    Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies Comment[] @relation("CommentReplies")
+
+  @@map("comments")
+}
+
+// Model untuk keamanan dan authentikasi
+model Session {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  userAgent String? // Browser/device info
+  ipAddress String? // IP Address untuk security tracking
+  expiresAt DateTime
+  isActive  Boolean  @default(true)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relasi
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// Model untuk sistem permission yang granular
+model Permission {
+  id          String  @id @default(uuid())
+  name        String  @unique // contoh: 'posts:create'
+  description String?
+  resource    String // contoh: 'posts', 'users', 'comments'
+  action      String // contoh: 'create', 'read', 'update', 'delete'
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relasi many-to-many dengan User
+  users UserPermission[]
+
+  // Constraint untuk mencegah duplikasi permission
+  @@unique([resource, action])
+  @@map("permissions")
+}
+
+model UserPermission {
+  id String @id @default(uuid())
+
+  // Foreign keys
+  userId       String
+  permissionId String
+
+  // Field tambahan untuk management permission
+  grantedAt DateTime  @default(now()) // Kapan permission diberikan
+  grantedBy String? // Siapa yang memberikan permission
+  expiresAt DateTime? // Permission bisa expire
+
+  // Relasi
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  // Constraint untuk mencegah duplikasi
+  @@unique([userId, permissionId])
+  @@map("user_permissions")
+}
+
+// Model untuk Audit Log - tracking semua perubahan data
+model AuditLog {
+  id         String  @id @default(uuid())
+  action     String // CREATE, UPDATE, DELETE
+  resource   String // Nama tabel yang diubah
+  resourceId String // ID record yang diubah
+  oldValues  Json? // Data sebelum perubahan
+  newValues  Json? // Data setelah perubahan
+  userId     String? // Siapa yang melakukan perubahan
+  ipAddress  String? // IP address untuk security
+  userAgent  String? // Browser/device info
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+// Enum untuk bahasa yang didukung
+enum Language {
+  ID // Indonesia
+  EN // English
+  ZH // Chinese
+}
+
+// Enums - konstanta yang terdefinisi dengan baik
+enum Role {
+  USER // Pengguna biasa
+  MODERATOR // Moderator konten
+  ADMIN // Administrator
+  SUPER_ADMIN // Super Administrator
+}
+
+enum PostStatus {
+  DRAFT // Draft - belum dipublikasi
+  PUBLISHED // Sudah dipublikasi
+  ARCHIVED // Diarsipkan
+  DELETED // Dihapus (soft delete)
+}

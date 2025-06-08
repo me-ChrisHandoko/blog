@@ -1,0 +1,40 @@
+{
+  "messages": {
+    "success": "Success",
+    "error": "An error occurred",
+    "notFound": "Data not found",
+    "unauthorized": "Unauthorized access",
+    "forbidden": "Access denied",
+    "badRequest": "Invalid request",
+    "internalError": "Internal server error",
+    "created": "Successfully created",
+    "updated": "Successfully updated",
+    "deleted": "Successfully deleted",
+    "restored": "Successfully restored"
+  },
+  "pagination": {
+    "page": "Page",
+    "limit": "Items per page",
+    "total": "Total items",
+    "totalPages": "Total pages",
+    "showing": "Showing {start} - {end} of {total} items"
+  },
+  "actions": {
+    "create": "Create",
+    "read": "View",
+    "update": "Update",
+    "delete": "Delete",
+    "search": "Search",
+    "filter": "Filter",
+    "sort": "Sort",
+    "export": "Export",
+    "import": "Import"
+  },
+  "status": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "pending": "Pending",
+    "approved": "Approved",
+    "rejected": "Rejected"
+  }
+}

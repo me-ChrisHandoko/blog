@@ -1,0 +1,33 @@
+{
+  "generic": {
+    "required": "Field {field} wajib diisi",
+    "invalid": "Format {field} tidak valid",
+    "tooShort": "{field} terlalu pendek (minimal {min} karakter)",
+    "tooLong": "{field} terlalu panjang (maksimal {min} karakter)",
+    "notUnique": "{field} sudah digunakan"
+  },
+  "email": {
+    "invalid": "Format email tidak valid",
+    "required": "Email wajib diisi",
+    "alreadyExists": "Email sudah terdaftar"
+  },
+  "password": {
+    "tooWeak": "Password harus mengandung minimal 8 karakter dengan kombinasi huruf besar, huruf kecil, angka dan simbol",
+    "required": "Password wajib diisi",
+    "mismatch": "Konfirmasi password tidak cocok"
+  },
+  "name": {
+    "tooShort": "Nama minilam 2 karakter",
+    "tooLong": "Nama maksimal 50 karakter",
+    "required": "Nama wajib diisi",
+    "invalidCharacters": "Nama hanya boleh mengandung huruf dan spasi"
+  },
+  "phone": {
+    "invalid": "Format nomor telepon tidak valid (contoh: +628123456789)",
+    "required": "Nomor telepon wajib diisi"
+  },
+  "language": {
+    "unsupported": "Bahasa tidak didukung. Bahasa yang tersedia: {languages}",
+    "required": "Bahasa wajib dipilih"
+  }
+}

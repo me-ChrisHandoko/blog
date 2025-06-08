@@ -1,0 +1,40 @@
+{
+  "messages": {
+    "success": "Berhasil",
+    "error": "Terjadi kesalahan",
+    "notFound": "Data tidak ditemukan",
+    "unauthorized": "Data tidak ditemukan",
+    "forbidden": "Akses ditolak",
+    "badRequest": "Permintaan tidak valid",
+    "internalError": "Kesalahan server internal",
+    "created": "berhasil dibuat",
+    "updated": "Berhasil diperbarui",
+    "deleted": "Berhasil dihapus",
+    "restored": "Berhasil dipulihkan"
+  },
+  "pagination": {
+    "page": "Halaman",
+    "limit": "Batas per halaman",
+    "total": "Total data",
+    "totalPages": "Total halaman",
+    "showing": "Menampilkan {start} - {end} dari {total} data"
+  },
+  "actions": {
+    "create": "Buat",
+    "read": "Lihat",
+    "update": "Perbarui",
+    "delete": "Hapus",
+    "search": "Cari",
+    "filter": "Filter",
+    "sort": "Urutkan",
+    "export": "Ekspor",
+    "import": "Impor"
+  },
+  "status": {
+    "active": "Aktif",
+    "inactive": "Tidak Aktif",
+    "pending": "Menunggu",
+    "Approved": "Disetujui",
+    "rejected": "Ditolak"
+  }
+}

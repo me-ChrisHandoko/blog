@@ -1,0 +1,108 @@
+{
+  "entity": {
+    "singular": "user",
+    "plural": "users"
+  },
+  "fields": {
+    "email": "Email",
+    "password": "Password",
+    "role": "Role",
+    "isActive": "Active Status",
+    "isVerified": "Verification Status",
+    "preferredLanguage": "Preferred Language",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "fullName": "Full Name",
+    "bio": "Biography",
+    "phone": "Phone Number",
+    "address": "Address",
+    "birthday": "Birthday",
+    "avatar": "Profile Picture"
+  },
+  "actions": {
+    "create": "Create User",
+    "update": "Update User",
+    "delete": "Delete User",
+    "list": "User List",
+    "detail": "User Detail",
+    "profile": "User Profile"
+  },
+  "messages": {
+    "created": "User successfully created",
+    "updated": "User successfully updated",
+    "deleted": "User successfully deleted",
+    "restored": "User successfully restored",
+    "notFound": "User not found",
+    "emailExists": "Email is already registered by another user",
+    "profileCreated": "Profile successfully created",
+    "profileUpdated": "Profile successfully updated",
+    "profileNotFound": "Profile not found",
+    "profileExists": "Profile already exists for this user",
+    "profileTranslationRequired": "At least one profile translation is required",
+    "statsRetrieved": "User statistics successfully retrieved",
+    "translationCreated": "Profile translation successfully created",
+    "translationUpdated": "Profile translation successfully updated",
+    "translationNotFound": "Translation not found for that language"
+  },
+  "roles": {
+    "USER": "User",
+    "MODERATOR": "Moderator",
+    "ADMIN": "Administrator",
+    "SUPER_ADMIN": "Super Administrator"
+  }
+}
+
+// src/i18n/translations/id/users.json - Add missing messages  
+{
+  "entity": {
+    "singular": "pengguna",
+    "plural": "pengguna"
+  },
+  "fields": {
+    "email": "Email",
+    "password": "Kata Sandi",
+    "role": "Peran",
+    "isActive": "Status Aktif",
+    "isVerified": "Status Verifikasi",
+    "preferredLanguage": "Bahasa Pilihan",
+    "firstName": "Nama Depan",
+    "lastName": "Nama Belakang",
+    "fullName": "Nama Lengkap",
+    "bio": "Biografi",
+    "phone": "Nomor Telepon",
+    "address": "Alamat",
+    "birthday": "Tanggal Lahir",
+    "avatar": "Foto Profil"
+  },
+  "actions": {
+    "create": "Buat Pengguna",
+    "update": "Perbarui Pengguna",
+    "delete": "Hapus Pengguna",
+    "list": "Daftar Pengguna",
+    "detail": "Detail Pengguna",
+    "profile": "Profil Pengguna"
+  },
+  "messages": {
+    "created": "Pengguna berhasil dibuat",
+    "updated": "Pengguna berhasil diperbarui",
+    "deleted": "Pengguna berhasil dihapus",
+    "restored": "Pengguna berhasil dipulihkan",
+    "notFound": "Pengguna tidak ditemukan",
+    "emailExists": "Email sudah terdaftar oleh pengguna lain",
+    "profileCreated": "Profil berhasil dibuat",
+    "profileUpdated": "Profil berhasil diperbarui",
+    "profileNotFound": "Profil tidak ditemukan",
+    "profileExists": "Profil sudah ada untuk pengguna ini",
+    "profileTranslationRequired": "Setidaknya satu terjemahan profil diperlukan",
+    "statsRetrieved": "Statistik pengguna berhasil diambil",
+    "translationCreated": "Terjemahan profil berhasil dibuat",
+    "translationUpdated": "Terjemahan profil berhasil diperbarui",
+    "translationNotFound": "Terjemahan tidak ditemukan untuk bahasa tersebut"
+  },
+  "roles": {
+    "USER": "Pengguna",
+    "MODERATOR": "Moderator",
+    "ADMIN": "Administrator",
+    "SUPER_ADMIN": "Super Administrator"
+  }
+}

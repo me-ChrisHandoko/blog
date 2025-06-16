@@ -8,6 +8,8 @@ import { HealthModule } from './health/health.module';
 import { AppI18nModule } from './i18n/i18n.module'; // Standalone I18n module
 import { TestModule } from './test/test.module'; // Development only
 import { UsersModule } from './users/users.module'; // Users module for user management
+import { ThrottlerModule } from '@nestjs/throttler';
+import { AuthModule } from './auth/auth.module';
 
 const developmentModules =
   process.env.NODE_ENV === 'development' ? [TestModule] : [];
@@ -18,9 +20,16 @@ const developmentModules =
       isGlobal: true,
       envFilePath: '.env',
     }),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 1 minute
+        limit: 100, // 100 requests per minute
+      },
+    ]),
     DatabaseModule,
     HealthModule,
     AppI18nModule, // Now using standalone implementation
+    AuthModule,
     UsersModule,
     ...developmentModules, // Only include TestModule in development
   ],

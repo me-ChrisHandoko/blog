@@ -1,4 +1,4 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import {
   FastifyAdapter,
   NestFastifyApplication,
@@ -6,6 +6,7 @@ import {
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 
 async function bootstrap() {
   // Create NestJS app with Fastify adapter
@@ -18,8 +19,9 @@ async function bootstrap() {
   );
 
   const configService = app.get(ConfigService);
+  const reflector = app.get(Reflector);
 
-  // Register Fastify plugins
+  // Security headers
   await app.register(require('@fastify/helmet'), {
     contentSecurityPolicy: {
       directives: {
@@ -38,6 +40,9 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // Compression
+  await app.register(require('@fastify/compress'));
+
   // Global validation pipe
   app.useGlobalPipes(
     new ValidationPipe({
@@ -50,12 +55,16 @@ async function bootstrap() {
     }),
   );
 
+  //Global JWT guard
+  app.useGlobalGuards(new JwtAuthGuard(reflector));
+
   // Start server
   const port = configService.get('PORT') || 3001;
   const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
 
   await app.listen(port, host);
   console.log(`🚀 Application running on: http://${host}:${port}`);
+  console.log(`🔐 Security features enabled`);
 }
 
 bootstrap();

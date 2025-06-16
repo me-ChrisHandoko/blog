@@ -17,7 +17,7 @@ export class AuthController {
     @Body() registerDto: RegisterDto,
     @CurrentLanguage() lang: SupportedLanguage,
   ) {
-    return this.authService.register(RegisterDto, lang);
+    return this.authService.register(registerDto, lang);
   }
 
   @Public()

@@ -1,6 +1,6 @@
 import { Controller, Get, Headers, Query } from '@nestjs/common';
 import { LanguageService } from '../i18n/services/language.service';
-// import { CurrentLanguage } from 'src/i18n/decorators/current-laguage.decorator';
+// import { CurrentLanguage } from 'src/i18n/decorators/current-language.decorator';
 import { SupportedLanguage } from '../i18n/constants/languages';
 
 @Controller('test')

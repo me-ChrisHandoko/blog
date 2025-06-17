@@ -33,24 +33,41 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
-    return this.authService.refreshToken(refreshTokenDto.refreshToken);
+  async refreshToken(
+    @Body() refreshTokenDto: RefreshTokenDto,
+    @CurrentLanguage() lang: SupportedLanguage, // ADDED: Missing lang parameter
+  ) {
+    return this.authService.refreshToken(refreshTokenDto.refreshToken, lang); // FIXED: Added lang parameter
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(
     @CurrentUser('id') userId: string,
+    @CurrentLanguage() lang: SupportedLanguage, // ADDED: For consistent error messages
     @Body('refreshToken') refreshToken?: string,
   ) {
     await this.authService.logout(userId, refreshToken);
-    return { message: 'Logged out successfuly' };
+    return {
+      message: this.authService.getLocalizedMessage(
+        'auth.messages.logoutSuccess',
+        lang,
+      ), // IMPROVED: Localized message
+    };
   }
 
   @Post('logout-all')
   @HttpCode(HttpStatus.OK)
-  async logoutAll(@CurrentUser('id') userId: string) {
+  async logoutAll(
+    @CurrentUser('id') userId: string,
+    @CurrentLanguage() lang: SupportedLanguage, // ADDED: For consistent error messages
+  ) {
     await this.authService.logout(userId);
-    return { message: 'Logged out from all devices' };
+    return {
+      message: this.authService.getLocalizedMessage(
+        'auth.messages.logoutAllSuccess',
+        lang,
+      ), // IMPROVED: Localized message
+    };
   }
 }

@@ -17,7 +17,7 @@
     "mismatch": "Konfirmasi password tidak cocok"
   },
   "name": {
-    "tooShort": "Nama minilam 2 karakter",
+    "tooShort": "Nama minimal 2 karakter",
     "tooLong": "Nama maksimal 50 karakter",
     "required": "Nama wajib diisi",
     "invalidCharacters": "Nama hanya boleh mengandung huruf dan spasi"

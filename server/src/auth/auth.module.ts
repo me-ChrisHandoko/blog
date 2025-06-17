@@ -6,11 +6,13 @@ import { UsersModule } from 'src/users/users.module';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthController } from './auth.controller';
+import { AppI18nModule } from 'src/i18n/i18n.module';
 
 @Module({
   imports: [
     UsersModule,
     PassportModule,
+    AppI18nModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({

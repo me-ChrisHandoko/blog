@@ -8,8 +8,12 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from 'src/database/prisma.service';
 import { UsersService } from 'src/users/users.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
-import { SupportedLanguage } from 'src/i18n/constants/languages';
+import {
+  getDefaultLanguage,
+  SupportedLanguage,
+} from 'src/i18n/constants/languages';
 import * as bcrypt from 'bcryptjs';
+import { LanguageService } from 'src/i18n/services/language.service';
 
 @Injectable()
 export class AuthService {
@@ -18,12 +22,17 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private prisma: PrismaService,
+    private languageService: LanguageService,
   ) {}
 
   async register(registerDto: RegisterDto, lang: SupportedLanguage) {
     // Validate password confirmation
     if (registerDto.password !== registerDto.confirmPassword) {
-      throw new ConflictException('validation.password.mismatch');
+      const message = this.languageService.translate(
+        'validation.password.mismatch',
+        lang,
+      );
+      throw new ConflictException(message);
     }
 
     // Check if user already exists
@@ -32,7 +41,11 @@ export class AuthService {
     });
 
     if (existingUser) {
-      throw new ConflictException('validation.email.alreadyExists');
+      const message = this.languageService.translate(
+        'validation.email.alreadyExists',
+        lang,
+      );
+      throw new ConflictException(message);
     }
 
     // Create user
@@ -61,11 +74,20 @@ export class AuthService {
     const user = await this.validateUser(loginDto.email, loginDto.password);
 
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      const message = this.languageService.translate(
+        'auth.messages.invalidCredentials',
+        lang,
+      );
+
+      throw new UnauthorizedException(message);
     }
 
     if (!user.isActive) {
-      throw new UnauthorizedException('Account is deactivated');
+      const message = this.languageService.translate(
+        'auth.messages.accountDeactivated',
+        lang,
+      );
+      throw new UnauthorizedException(message);
     }
 
     // Update last login
@@ -86,7 +108,10 @@ export class AuthService {
     };
   }
 
-  async refreshToken(refreshToken: string) {
+  async refreshToken(
+    refreshToken: string,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ) {
     try {
       const payload = this.jwtService.verify(refreshToken, {
         secret: this.configService.get('JWT_REFRESH_SECRET'),
@@ -106,7 +131,11 @@ export class AuthService {
       });
 
       if (!session) {
-        throw new UnauthorizedException('Invalid refresh token');
+        const message = this.languageService.translate(
+          'auth.messages.invalidToken',
+          lang,
+        );
+        throw new UnauthorizedException(message);
       }
 
       // Generate new tokens
@@ -124,7 +153,11 @@ export class AuthService {
 
       return tokens;
     } catch (error) {
-      throw new UnauthorizedException('Invalid refresh token');
+      const message = this.languageService.translate(
+        'auth.messages.invalidToken',
+        lang,
+      );
+      throw new UnauthorizedException(message);
     }
   }
 
@@ -141,6 +174,13 @@ export class AuthService {
         data: { isActive: false },
       });
     }
+  }
+
+  getLocalizedMessage(
+    key: string,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): string {
+    return this.languageService.translate(key, lang);
   }
 
   private async validateUser(email: string, password: string) {

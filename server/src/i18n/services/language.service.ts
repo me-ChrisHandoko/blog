@@ -21,6 +21,13 @@ export class LanguageService {
     Record<string, string>
   > = {
     [SupportedLanguage.INDONESIAN]: {
+      // Auth messages
+      'auth.messages.invalidCredentials': 'Email atau password tidak valid',
+      'auth.messages.accountDeactivated': 'Akun Anda telah dinonaktifkan',
+      'auth.messages.loginSuccess': 'Login berhasil',
+      'auth.messages.logoutSuccess': 'Logout berhasil',
+      'auth.messages.tokenRefreshed': 'Token berhasil diperbarui',
+      'auth.messages.invalidToken': 'Token tidak valid atau telah kedaluwarsa',
       // Users messages
       'users.messages.created': 'Pengguna berhasil dibuat',
       'users.messages.updated': 'Pengguna berhasil diperbarui',
@@ -65,9 +72,12 @@ export class LanguageService {
       'validation.email.invalid': 'Format email tidak valid',
       'validation.email.required': 'Email wajib diisi',
       'validation.email.alreadyExists': 'Email sudah terdaftar',
-      'validation.password.tooWeak':
-        'Password harus mengandung minimal 8 karakter dengan kombinasi huruf besar, huruf kecil, angka dan simbol',
       'validation.password.required': 'Password wajib diisi',
+      'validation.password.complexity':
+        'Password harus mengandung minimal 8 karakter dengan kombinasi huruf besar, huruf kecil, angka dan simbol',
+      'validation.password.minLength': 'Password minimal 8 karakter',
+      'validation.password.pattern':
+        'Password harus mengandung kombinasi huruf besar, huruf kecil, angka dan simbol',
       'validation.password.mismatch': 'Konfirmasi password tidak cocok',
       'validation.name.tooShort': 'Nama minimal 2 karakter',
       'validation.name.tooLong': 'Nama maksimal 50 karakter',
@@ -81,6 +91,13 @@ export class LanguageService {
     },
 
     [SupportedLanguage.ENGLISH]: {
+      // Auth messages
+      'auth.messages.invalidCredentials': 'Invalid email or password',
+      'auth.messages.accountDeactivated': 'Your account has been deactivated',
+      'auth.messages.loginSuccess': 'Login successful',
+      'auth.messages.logoutSuccess': 'Logout successful',
+      'auth.messages.tokenRefreshed': 'Token refreshed successfully',
+      'auth.messages.invalidToken': 'Invalid or expired token',
       // Users messages
       'users.messages.created': 'User successfully created',
       'users.messages.updated': 'User successfully updated',
@@ -127,9 +144,12 @@ export class LanguageService {
       'validation.email.invalid': 'Invalid email format',
       'validation.email.required': 'Email is required',
       'validation.email.alreadyExists': 'Email is already registered',
-      'validation.password.tooWeak':
-        'Password must contain at least 8 characters with a combination of uppercase, lowercase, numbers, and symbols',
       'validation.password.required': 'Password is required',
+      'validation.password.complexity':
+        'Password must contain at least 8 characters with a combination of uppercase, lowercase, numbers, and symbols',
+      'validation.password.minLength': 'Password must be at least 8 characters',
+      'validation.password.pattern':
+        'Password must contain uppercase, lowercase, numbers, and symbols',
       'validation.password.mismatch': 'Password confirmation does not match',
       'validation.name.tooShort': 'Name must be at least 2 characters',
       'validation.name.tooLong': 'Name must not exceed 50 characters',
@@ -143,6 +163,13 @@ export class LanguageService {
     },
 
     [SupportedLanguage.CHINESE]: {
+      // Auth messages
+      'auth.messages.invalidCredentials': '邮箱或密码无效',
+      'auth.messages.accountDeactivated': '您的账户已被停用',
+      'auth.messages.loginSuccess': '登录成功',
+      'auth.messages.logoutSuccess': '登出成功',
+      'auth.messages.tokenRefreshed': '令牌刷新成功',
+      'auth.messages.invalidToken': '无效或过期的令牌',
       // Users messages
       'users.messages.created': '用户创建成功',
       'users.messages.updated': '用户更新成功',
@@ -182,9 +209,12 @@ export class LanguageService {
       'validation.email.invalid': '无效的邮箱格式',
       'validation.email.required': '邮箱是必填项',
       'validation.email.alreadyExists': '邮箱已被注册',
-      'validation.password.tooWeak':
-        '密码必须包含至少8个字符，包括大写字母、小写字母、数字和符号',
       'validation.password.required': '密码是必填项',
+      'validation.password.complexity':
+        '密码必须包含至少8个字符，包括大写字母、小写字母、数字和符号',
+      'validation.password.minLength': '密码必须至少8个字符',
+      'validation.password.pattern':
+        '密码必须包含大写字母、小写字母、数字和符号',
       'validation.password.mismatch': '密码确认不匹配',
       'validation.name.tooShort': '姓名至少需要2个字符',
       'validation.name.tooLong': '姓名不能超过50个字符',

@@ -1,7 +1,26 @@
 {
-  "entity": {
-    "singular": "pengguna",
-    "plural": "pengguna"
+  "messages": {
+    "created": "Pengguna berhasil dibuat",
+    "updated": "Pengguna berhasil diperbarui",
+    "deleted": "Pengguna berhasil dihapus",
+    "restored": "Pengguna berhasil dipulihkan",
+    "notFound": "Pengguna tidak ditemukan",
+    "emailExists": "Email sudah terdaftar oleh pengguna lain",
+    "profileCreated": "Profil berhasil dibuat",
+    "profileUpdated": "Profil berhasil diperbarui",
+    "profileNotFound": "Profil tidak ditemukan",
+    "profileExists": "Profil sudah ada untuk pengguna ini",
+    "profileTranslationRequired": "Setidaknya satu terjemahan profil diperlukan",
+    "statsRetrieved": "Statistik pengguna berhasil diambil",
+    "translationCreated": "Terjemahan profil berhasil dibuat",
+    "translationUpdated": "Terjemahan profil berhasil diperbarui",
+    "translationNotFound": "Terjemahan tidak ditemukan untuk bahasa tersebut"
+  },
+  "roles": {
+    "USER": "Pengguna",
+    "MODERATOR": "Moderator",
+    "ADMIN": "Administrator",
+    "SUPER_ADMIN": "Super Administrator"
   },
   "fields": {
     "email": "Email",
@@ -18,35 +37,5 @@
     "address": "Alamat",
     "birthday": "Tanggal Lahir",
     "avatar": "Foto Profil"
-  },
-  "actions": {
-    "create": "Buat Pengguna",
-    "update": "Perbarui Pengguna",
-    "delete": "Hapus Pengguna",
-    "list": "Daftar Pengguna",
-    "detail": "Deetail Pengguna",
-    "profile": "Profil Pengguna"
-  },
-  "messages": {
-    "created": "Pengguna berhasil dibuat",
-    "updated": "Pengguna berhasil diperbarui",
-    "deleted": "Pengguna berhasil dihapus",
-    "restored": "Pengguna berhasil dipulihkan",
-    "notFound": "Pengguna tidak ditemukan",
-    "emailExists": "Email sudah terdaftar oleh pengguna lain",
-    "profileCreated": "Profil berhasil dibuat",
-    "profileUpdated": "Profil berhasil diperbarui",
-    "profileNotFound": "Profil tidak ditemukan",
-    "profileExists": "Profil sudah ada untuk pengguna ini",
-    "statsRetrieved": "Statistik pengguna berhasil diambil",
-    "translatinCreated": "Terjemahan profil berhasil dbuat",
-    "translatinUpdated": "Terjemahan profil berhasil diperbarui",
-    "translatinNotFound": "Terjemahan profil tidak ditemukan"
-  },
-  "roles": {
-    "USER": "Pengguna",
-    "MODERATOR": "Moderator",
-    "ADMIN": "Administrator",
-    "SUPER_ADMIN": "Super Administrator"
   }
 }

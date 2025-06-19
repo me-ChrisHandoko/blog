@@ -12,8 +12,10 @@
     "alreadyExists": "Email is already registered"
   },
   "password": {
-    "tooWeak": "Password must contain at least 8 characters with a combination of uppercase, lowercase, numbers, and symbols",
     "required": "Password is required",
+    "complexity": "Password must contain at least 8 characters with a combination of uppercase, lowercase, numbers, and symbols",
+    "minLength": "Password must be at least 8 characters",
+    "pattern": "Password must contain uppercase, lowercase, numbers, and symbols",
     "mismatch": "Password confirmation does not match"
   },
   "name": {

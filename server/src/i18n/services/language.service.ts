@@ -1,233 +1,182 @@
-// src/i18n/services/language.service.ts - EMERGENCY STANDALONE VERSION
-import { Injectable, Logger } from '@nestjs/common';
+// src/i18n/services/language.service.ts - File-based translation with enhanced features
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
   SupportedLanguage,
   LanguageMetadata,
   isValidLanguage,
   getDefaultLanguage,
 } from '../constants/languages';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// Translation interfaces for better type safety
+interface TranslationFile {
+  [key: string]: string | TranslationFile;
+}
+
+interface LoadedTranslations {
+  [SupportedLanguage.INDONESIAN]: TranslationFile;
+  [SupportedLanguage.ENGLISH]: TranslationFile;
+  [SupportedLanguage.CHINESE]: TranslationFile;
+}
 
 /**
- * Standalone Language Service - No external I18n dependencies
- * This is a temporary solution to get the app running
+ * Enhanced File-Based Language Service
+ * Loads translations from separate JSON files while maintaining performance
  */
 @Injectable()
-export class LanguageService {
+export class LanguageService implements OnModuleInit {
   private readonly logger = new Logger(LanguageService.name);
-
-  // Inline translations - all languages in one place
-  private readonly translations: Record<
-    SupportedLanguage,
-    Record<string, string>
-  > = {
-    [SupportedLanguage.INDONESIAN]: {
-      // Auth messages
-      'auth.messages.invalidCredentials': 'Email atau password tidak valid',
-      'auth.messages.accountDeactivated': 'Akun Anda telah dinonaktifkan',
-      'auth.messages.loginSuccess': 'Login berhasil',
-      'auth.messages.logoutSuccess': 'Logout berhasil',
-      'auth.messages.tokenRefreshed': 'Token berhasil diperbarui',
-      'auth.messages.invalidToken': 'Token tidak valid atau telah kedaluwarsa',
-      // Users messages
-      'users.messages.created': 'Pengguna berhasil dibuat',
-      'users.messages.updated': 'Pengguna berhasil diperbarui',
-      'users.messages.deleted': 'Pengguna berhasil dihapus',
-      'users.messages.restored': 'Pengguna berhasil dipulihkan',
-      'users.messages.notFound': 'Pengguna tidak ditemukan',
-      'users.messages.emailExists': 'Email sudah terdaftar oleh pengguna lain',
-      'users.messages.profileCreated': 'Profil berhasil dibuat',
-      'users.messages.profileUpdated': 'Profil berhasil diperbarui',
-      'users.messages.profileNotFound': 'Profil tidak ditemukan',
-      'users.messages.profileExists': 'Profil sudah ada untuk pengguna ini',
-      'users.messages.profileTranslationRequired':
-        'Setidaknya satu terjemahan profil diperlukan',
-      'users.messages.statsRetrieved': 'Statistik pengguna berhasil diambil',
-      'users.messages.translationCreated': 'Terjemahan profil berhasil dibuat',
-      'users.messages.translationUpdated':
-        'Terjemahan profil berhasil diperbarui',
-      'users.messages.translationNotFound':
-        'Terjemahan tidak ditemukan untuk bahasa tersebut',
-
-      // Common messages
-      'common.messages.success': 'Berhasil',
-      'common.messages.error': 'Terjadi kesalahan',
-      'common.messages.notFound': 'Data tidak ditemukan',
-      'common.messages.unauthorized': 'Akses tidak diizinkan',
-      'common.messages.forbidden': 'Akses ditolak',
-      'common.messages.badRequest': 'Permintaan tidak valid',
-      'common.messages.internalError': 'Kesalahan server internal',
-      'common.messages.created': 'Berhasil dibuat',
-      'common.messages.updated': 'Berhasil diperbarui',
-      'common.messages.deleted': 'Berhasil dihapus',
-      'common.messages.restored': 'Berhasil dipulihkan',
-
-      // Validation messages
-      'validation.generic.required': 'Field {field} wajib diisi',
-      'validation.generic.invalid': 'Format {field} tidak valid',
-      'validation.generic.tooShort':
-        '{field} terlalu pendek (minimal {min} karakter)',
-      'validation.generic.tooLong':
-        '{field} terlalu panjang (maksimal {max} karakter)',
-      'validation.generic.notUnique': '{field} sudah digunakan',
-      'validation.email.invalid': 'Format email tidak valid',
-      'validation.email.required': 'Email wajib diisi',
-      'validation.email.alreadyExists': 'Email sudah terdaftar',
-      'validation.password.required': 'Password wajib diisi',
-      'validation.password.complexity':
-        'Password harus mengandung minimal 8 karakter dengan kombinasi huruf besar, huruf kecil, angka dan simbol',
-      'validation.password.minLength': 'Password minimal 8 karakter',
-      'validation.password.pattern':
-        'Password harus mengandung kombinasi huruf besar, huruf kecil, angka dan simbol',
-      'validation.password.mismatch': 'Konfirmasi password tidak cocok',
-      'validation.name.tooShort': 'Nama minimal 2 karakter',
-      'validation.name.tooLong': 'Nama maksimal 50 karakter',
-      'validation.name.required': 'Nama wajib diisi',
-      'validation.phone.invalid':
-        'Format nomor telepon tidak valid (contoh: +628123456789)',
-      'validation.phone.required': 'Nomor telepon wajib diisi',
-      'validation.language.unsupported':
-        'Bahasa tidak didukung. Bahasa yang tersedia: {languages}',
-      'validation.language.required': 'Bahasa wajib dipilih',
-    },
-
-    [SupportedLanguage.ENGLISH]: {
-      // Auth messages
-      'auth.messages.invalidCredentials': 'Invalid email or password',
-      'auth.messages.accountDeactivated': 'Your account has been deactivated',
-      'auth.messages.loginSuccess': 'Login successful',
-      'auth.messages.logoutSuccess': 'Logout successful',
-      'auth.messages.tokenRefreshed': 'Token refreshed successfully',
-      'auth.messages.invalidToken': 'Invalid or expired token',
-      // Users messages
-      'users.messages.created': 'User successfully created',
-      'users.messages.updated': 'User successfully updated',
-      'users.messages.deleted': 'User successfully deleted',
-      'users.messages.restored': 'User successfully restored',
-      'users.messages.notFound': 'User not found',
-      'users.messages.emailExists':
-        'Email is already registered by another user',
-      'users.messages.profileCreated': 'Profile successfully created',
-      'users.messages.profileUpdated': 'Profile successfully updated',
-      'users.messages.profileNotFound': 'Profile not found',
-      'users.messages.profileExists': 'Profile already exists for this user',
-      'users.messages.profileTranslationRequired':
-        'At least one profile translation is required',
-      'users.messages.statsRetrieved': 'User statistics successfully retrieved',
-      'users.messages.translationCreated':
-        'Profile translation successfully created',
-      'users.messages.translationUpdated':
-        'Profile translation successfully updated',
-      'users.messages.translationNotFound':
-        'Translation not found for that language',
-
-      // Common messages
-      'common.messages.success': 'Success',
-      'common.messages.error': 'An error occurred',
-      'common.messages.notFound': 'Data not found',
-      'common.messages.unauthorized': 'Unauthorized access',
-      'common.messages.forbidden': 'Access denied',
-      'common.messages.badRequest': 'Invalid request',
-      'common.messages.internalError': 'Internal server error',
-      'common.messages.created': 'Successfully created',
-      'common.messages.updated': 'Successfully updated',
-      'common.messages.deleted': 'Successfully deleted',
-      'common.messages.restored': 'Successfully restored',
-
-      // Validation messages
-      'validation.generic.required': '{field} is required',
-      'validation.generic.invalid': 'Invalid {field} format',
-      'validation.generic.tooShort':
-        '{field} is too short (minimum {min} characters)',
-      'validation.generic.tooLong':
-        '{field} is too long (maximum {max} characters)',
-      'validation.generic.notUnique': '{field} is already taken',
-      'validation.email.invalid': 'Invalid email format',
-      'validation.email.required': 'Email is required',
-      'validation.email.alreadyExists': 'Email is already registered',
-      'validation.password.required': 'Password is required',
-      'validation.password.complexity':
-        'Password must contain at least 8 characters with a combination of uppercase, lowercase, numbers, and symbols',
-      'validation.password.minLength': 'Password must be at least 8 characters',
-      'validation.password.pattern':
-        'Password must contain uppercase, lowercase, numbers, and symbols',
-      'validation.password.mismatch': 'Password confirmation does not match',
-      'validation.name.tooShort': 'Name must be at least 2 characters',
-      'validation.name.tooLong': 'Name must not exceed 50 characters',
-      'validation.name.required': 'Name is required',
-      'validation.phone.invalid':
-        'Invalid phone number format (example: +628123456789)',
-      'validation.phone.required': 'Phone number is required',
-      'validation.language.unsupported':
-        'Language not supported. Available languages: {languages}',
-      'validation.language.required': 'Language must be selected',
-    },
-
-    [SupportedLanguage.CHINESE]: {
-      // Auth messages
-      'auth.messages.invalidCredentials': '邮箱或密码无效',
-      'auth.messages.accountDeactivated': '您的账户已被停用',
-      'auth.messages.loginSuccess': '登录成功',
-      'auth.messages.logoutSuccess': '登出成功',
-      'auth.messages.tokenRefreshed': '令牌刷新成功',
-      'auth.messages.invalidToken': '无效或过期的令牌',
-      // Users messages
-      'users.messages.created': '用户创建成功',
-      'users.messages.updated': '用户更新成功',
-      'users.messages.deleted': '用户删除成功',
-      'users.messages.restored': '用户恢复成功',
-      'users.messages.notFound': '未找到用户',
-      'users.messages.emailExists': '邮箱已被其他用户注册',
-      'users.messages.profileCreated': '配置文件创建成功',
-      'users.messages.profileUpdated': '配置文件更新成功',
-      'users.messages.profileNotFound': '未找到配置文件',
-      'users.messages.profileExists': '该用户已存在配置文件',
-      'users.messages.profileTranslationRequired': '至少需要一个配置文件翻译',
-      'users.messages.statsRetrieved': '用户统计信息获取成功',
-      'users.messages.translationCreated': '配置文件翻译创建成功',
-      'users.messages.translationUpdated': '配置文件翻译更新成功',
-      'users.messages.translationNotFound': '未找到该语言的翻译',
-
-      // Common messages
-      'common.messages.success': '成功',
-      'common.messages.error': '发生错误',
-      'common.messages.notFound': '未找到数据',
-      'common.messages.unauthorized': '未授权访问',
-      'common.messages.forbidden': '访问被拒绝',
-      'common.messages.badRequest': '无效请求',
-      'common.messages.internalError': '内部服务器错误',
-      'common.messages.created': '创建成功',
-      'common.messages.updated': '更新成功',
-      'common.messages.deleted': '删除成功',
-      'common.messages.restored': '恢复成功',
-
-      // Validation messages
-      'validation.generic.required': '{field} 是必填项',
-      'validation.generic.invalid': '无效的 {field} 格式',
-      'validation.generic.tooShort': '{field} 太短（最少 {min} 个字符）',
-      'validation.generic.tooLong': '{field} 太长（最多 {max} 个字符）',
-      'validation.generic.notUnique': '{field} 已被使用',
-      'validation.email.invalid': '无效的邮箱格式',
-      'validation.email.required': '邮箱是必填项',
-      'validation.email.alreadyExists': '邮箱已被注册',
-      'validation.password.required': '密码是必填项',
-      'validation.password.complexity':
-        '密码必须包含至少8个字符，包括大写字母、小写字母、数字和符号',
-      'validation.password.minLength': '密码必须至少8个字符',
-      'validation.password.pattern':
-        '密码必须包含大写字母、小写字母、数字和符号',
-      'validation.password.mismatch': '密码确认不匹配',
-      'validation.name.tooShort': '姓名至少需要2个字符',
-      'validation.name.tooLong': '姓名不能超过50个字符',
-      'validation.name.required': '姓名是必填项',
-      'validation.phone.invalid': '无效的电话号码格式（例如：+628123456789）',
-      'validation.phone.required': '电话号码是必填项',
-      'validation.language.unsupported': '不支持该语言。可用语言：{languages}',
-      'validation.language.required': '必须选择语言',
-    },
-  };
+  private translations: LoadedTranslations;
+  private readonly translationsPath: string;
+  private translationCache = new Map<string, string>();
 
   constructor() {
-    this.logger.log('✅ Standalone Language Service initialized');
+    this.translationsPath = path.join(
+      process.cwd(),
+      'src',
+      'i18n',
+      'translations',
+    );
+    this.translations = {} as LoadedTranslations;
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.loadTranslations();
+    this.logger.log('✅ File-based translations loaded successfully');
+  }
+
+  /**
+   * Load all translation files from the translations directory
+   */
+  private async loadTranslations(): Promise<void> {
+    try {
+      const supportedLanguages = this.getSupportedLanguages();
+
+      for (const lang of supportedLanguages) {
+        this.translations[lang] = await this.loadLanguageTranslations(lang);
+      }
+
+      this.logger.log(
+        `📁 Loaded translations for ${supportedLanguages.length} languages`,
+      );
+      this.validateLoadedTranslations();
+    } catch (error) {
+      this.logger.error('❌ Failed to load translations:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load translation files for a specific language
+   */
+  private async loadLanguageTranslations(
+    language: SupportedLanguage,
+  ): Promise<TranslationFile> {
+    const langPath = path.join(this.translationsPath, language);
+
+    if (!fs.existsSync(langPath)) {
+      this.logger.warn(
+        `⚠️  Translation directory not found for language: ${language}`,
+      );
+      return {};
+    }
+
+    const translationFiles = await this.getTranslationFiles(langPath);
+    const mergedTranslations: TranslationFile = {};
+
+    for (const file of translationFiles) {
+      const filePath = path.join(langPath, file);
+      try {
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const parsed = JSON.parse(fileContent);
+        const fileKey = path.basename(file, '.json');
+
+        mergedTranslations[fileKey] = parsed;
+        this.logger.debug(`📄 Loaded ${file} for ${language}`);
+      } catch (error) {
+        this.logger.error(
+          `❌ Failed to load translation file: ${filePath}`,
+          error,
+        );
+      }
+    }
+
+    return mergedTranslations;
+  }
+
+  /**
+   * Get all JSON translation files in a directory
+   */
+  private async getTranslationFiles(dirPath: string): Promise<string[]> {
+    try {
+      const files = fs.readdirSync(dirPath);
+      return files.filter((file) => file.endsWith('.json'));
+    } catch (error) {
+      this.logger.error(
+        `Failed to read translation directory: ${dirPath}`,
+        error,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Validate that all languages have consistent translation keys
+   */
+  private validateLoadedTranslations(): void {
+    const supportedLanguages = this.getSupportedLanguages();
+    const [defaultLang, ...otherLangs] = supportedLanguages;
+    const defaultKeys = this.getAllKeysFromTranslation(
+      this.translations[defaultLang],
+    );
+
+    let totalMissingKeys = 0;
+
+    for (const lang of otherLangs) {
+      const langKeys = this.getAllKeysFromTranslation(this.translations[lang]);
+      const missingKeys = defaultKeys.filter((key) => !langKeys.includes(key));
+
+      if (missingKeys.length > 0) {
+        totalMissingKeys += missingKeys.length;
+        this.logger.warn(
+          `⚠️  Missing ${missingKeys.length} translation keys in ${lang}:`,
+          missingKeys.slice(0, 5),
+        );
+      }
+    }
+
+    if (totalMissingKeys === 0) {
+      this.logger.log(
+        '✅ All translation keys are consistent across languages',
+      );
+    } else {
+      this.logger.warn(
+        `⚠️  Found ${totalMissingKeys} missing translation keys across languages`,
+      );
+    }
+  }
+
+  /**
+   * Get all translation keys from a translation object (flattened)
+   */
+  private getAllKeysFromTranslation(
+    translation: TranslationFile,
+    prefix: string = '',
+  ): string[] {
+    const keys: string[] = [];
+
+    for (const [key, value] of Object.entries(translation)) {
+      const fullKey = prefix ? `${prefix}.${key}` : key;
+
+      if (typeof value === 'string') {
+        keys.push(fullKey);
+      } else if (typeof value === 'object' && value !== null) {
+        keys.push(...this.getAllKeysFromTranslation(value, fullKey));
+      }
+    }
+
+    return keys;
   }
 
   getDefaultLanguage(): SupportedLanguage {
@@ -308,35 +257,109 @@ export class LanguageService {
   }
 
   /**
-   * Main translation method - fully standalone
+   * Main translation method with caching
    */
   translate(
     key: string,
     lang: SupportedLanguage,
     args?: Record<string, any>,
   ): string {
-    // Get translation from inline data
-    const translation = this.translations[lang]?.[key];
+    // Create cache key
+    const cacheKey = `${lang}:${key}:${args ? JSON.stringify(args) : ''}`;
 
-    if (translation) {
-      return this.interpolateArgs(translation, args);
+    // Check cache first
+    if (this.translationCache.has(cacheKey)) {
+      return this.translationCache.get(cacheKey)!;
     }
 
-    // Try default language as fallback
-    if (lang !== this.getDefaultLanguage()) {
-      const defaultTranslation =
-        this.translations[this.getDefaultLanguage()]?.[key];
-      if (defaultTranslation) {
-        this.logger.debug(`Using default language translation for key: ${key}`);
-        return this.interpolateArgs(defaultTranslation, args);
+    // Get translation using path notation (e.g., 'auth.messages.loginSuccess')
+    let translation = this.getNestedTranslation(key, lang);
+
+    if (!translation) {
+      // Try default language as fallback
+      if (lang !== this.getDefaultLanguage()) {
+        translation = this.getNestedTranslation(key, this.getDefaultLanguage());
+        if (translation) {
+          this.logger.debug(
+            `Using default language translation for key: ${key}`,
+          );
+        }
       }
     }
 
-    // No translation found - return key
-    this.logger.warn(
-      `No translation found for key: ${key} in language: ${lang}`,
-    );
-    return key;
+    if (!translation) {
+      // No translation found - return key
+      this.logger.warn(
+        `No translation found for key: ${key} in language: ${lang}`,
+      );
+      translation = key;
+    }
+
+    // Interpolate arguments
+    const result = this.interpolateArgs(translation, args);
+
+    // Cache the result
+    this.translationCache.set(cacheKey, result);
+
+    return result;
+  }
+
+  /**
+   * Get nested translation using dot notation
+   */
+  private getNestedTranslation(
+    key: string,
+    lang: SupportedLanguage,
+  ): string | null {
+    if (!this.translations[lang]) {
+      return null;
+    }
+
+    const pathParts = key.split('.');
+    let current: any = this.translations[lang];
+
+    for (const part of pathParts) {
+      if (current && typeof current === 'object' && part in current) {
+        current = current[part];
+      } else {
+        return null;
+      }
+    }
+
+    return typeof current === 'string' ? current : null;
+  }
+
+  /**
+   * Type-safe translation methods for specific modules
+   */
+  translateAuth(key: string, lang: SupportedLanguage): string {
+    return this.translate(`auth.messages.${key}`, lang);
+  }
+
+  translateUsers(
+    key: string,
+    category: 'messages' | 'roles',
+    lang: SupportedLanguage,
+  ): string {
+    return this.translate(`users.${category}.${key}`, lang);
+  }
+
+  translateValidation(
+    category: string,
+    key: string,
+    lang: SupportedLanguage,
+    args?: Record<string, any>,
+  ): string {
+    return this.translate(`validation.${category}.${key}`, lang, args);
+  }
+
+  translateCommon(
+    category: string,
+    key: string,
+    lang: SupportedLanguage,
+    args?: Record<string, any>,
+  ): string {
+    return this.translate(`common.${category}.${key}`, lang, args);
   }
 
   /**
@@ -353,6 +376,56 @@ export class LanguageService {
     }, template);
   }
 
+  /**
+   * Reload translations (useful for development)
+   */
+  async reloadTranslations(): Promise<void> {
+    this.logger.log('🔄 Reloading translations...');
+    this.translationCache.clear();
+    await this.loadTranslations();
+  }
+
+  /**
+   * Get translation from specific file
+   */
+  getTranslationFromFile(
+    fileName: string,
+    key: string,
+    lang: SupportedLanguage,
+  ): string | null {
+    const fileTranslations = this.translations[lang]?.[fileName];
+    if (!fileTranslations) return null;
+
+    const pathParts = key.split('.');
+    let current: any = fileTranslations;
+
+    for (const part of pathParts) {
+      if (current && typeof current === 'object' && part in current) {
+        current = current[part];
+      } else {
+        return null;
+      }
+    }
+
+    return typeof current === 'string' ? current : null;
+  }
+
+  /**
+   * Get all available files for a language
+   */
+  getAvailableFiles(lang: SupportedLanguage): string[] {
+    if (!this.translations[lang]) return [];
+    return Object.keys(this.translations[lang]);
+  }
+
+  /**
+   * Check if a translation file exists
+   */
+  hasTranslationFile(fileName: string, lang: SupportedLanguage): boolean {
+    return !!(this.translations[lang] && this.translations[lang][fileName]);
+  }
+
+  // All other methods remain the same...
   getLanguageMetadata(lang: SupportedLanguage) {
     return LanguageMetadata[lang];
   }
@@ -380,7 +453,6 @@ export class LanguageService {
       EN: SupportedLanguage.ENGLISH,
       ZH: SupportedLanguage.CHINESE,
     };
-
     return langMap[prismaLang] || this.getDefaultLanguage();
   }
 
@@ -390,7 +462,6 @@ export class LanguageService {
       [SupportedLanguage.ENGLISH]: 'EN',
       [SupportedLanguage.CHINESE]: 'ZH',
     };
-
     return langMap[supportedLang] || 'ID';
   }
 
@@ -423,13 +494,76 @@ export class LanguageService {
    * Debug method to list all available translations
    */
   getAvailableTranslations(lang: SupportedLanguage): string[] {
-    return Object.keys(this.translations[lang] || {});
+    if (!this.translations[lang]) return [];
+    return this.getAllKeysFromTranslation(this.translations[lang]);
   }
 
   /**
    * Check if a translation key exists
    */
   hasTranslation(key: string, lang: SupportedLanguage): boolean {
-    return !!this.translations[lang]?.[key];
+    return this.getNestedTranslation(key, lang) !== null;
+  }
+
+  /**
+   * Get all translations for a specific section (for debugging)
+   */
+  getTranslationSection(section: string, lang: SupportedLanguage): any {
+    return this.translations[lang]?.[section] || null;
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats(): { size: number; keys: string[] } {
+    return {
+      size: this.translationCache.size,
+      keys: Array.from(this.translationCache.keys()).slice(0, 10), // First 10 keys for debugging
+    };
+  }
+
+  /**
+   * Clear translation cache
+   */
+  clearCache(): void {
+    this.translationCache.clear();
+    this.logger.log('🗑️  Translation cache cleared');
+  }
+
+  /**
+   * Get file modification stats (for cache invalidation)
+   */
+  getFileStats(): Record<SupportedLanguage, Record<string, any>> {
+    const stats: Record<SupportedLanguage, Record<string, any>> = {} as any;
+
+    for (const lang of this.getSupportedLanguages()) {
+      stats[lang] = {};
+      const langPath = path.join(this.translationsPath, lang);
+
+      if (fs.existsSync(langPath)) {
+        const files = fs
+          .readdirSync(langPath)
+          .filter((file) => file.endsWith('.json'));
+
+        for (const file of files) {
+          const filePath = path.join(langPath, file);
+          try {
+            const stat = fs.statSync(filePath);
+            stats[lang][file] = {
+              size: stat.size,
+              modified: stat.mtime,
+              exists: true,
+            };
+          } catch (error) {
+            stats[lang][file] = {
+              exists: false,
+              error: error.message,
+            };
+          }
+        }
+      }
+    }
+
+    return stats;
   }
 }

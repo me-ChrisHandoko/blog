@@ -28,13 +28,21 @@
     "filter": "Filter",
     "sort": "Sort",
     "export": "Export",
-    "import": "Import"
+    "import": "Import",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "submit": "Submit",
+    "reset": "Reset"
   },
   "status": {
     "active": "Active",
     "inactive": "Inactive",
     "pending": "Pending",
     "approved": "Approved",
-    "rejected": "Rejected"
+    "rejected": "Rejected",
+    "draft": "Draft",
+    "published": "Published",
+    "archived": "Archived"
   }
 }

@@ -1,0 +1,35 @@
+{
+  "generic": {
+    "required": "{field} 是必填项",
+    "invalid": "无效的 {field} 格式",
+    "tooShort": "{field} 太短（最少 {min} 个字符）",
+    "tooLong": "{field} 太长（最多 {max} 个字符）",
+    "notUnique": "{field} 已被使用"
+  },
+  "email": {
+    "invalid": "无效的邮箱格式",
+    "required": "邮箱是必填项",
+    "alreadyExists": "邮箱已被注册"
+  },
+  "password": {
+    "required": "密码是必填项",
+    "complexity": "密码必须包含至少8个字符，包括大写字母、小写字母、数字和符号",
+    "minLength": "密码必须至少8个字符",
+    "pattern": "密码必须包含大写字母、小写字母、数字和符号",
+    "mismatch": "密码确认不匹配"
+  },
+  "name": {
+    "tooShort": "姓名至少需要2个字符",
+    "tooLong": "姓名不能超过50个字符",
+    "required": "姓名是必填项",
+    "invalidCharacters": "姓名只能包含字母和空格"
+  },
+  "phone": {
+    "invalid": "无效的电话号码格式（例如：+628123456789）",
+    "required": "电话号码是必填项"
+  },
+  "language": {
+    "unsupported": "不支持该语言。可用语言：{languages}",
+    "required": "必须选择语言"
+  }
+}

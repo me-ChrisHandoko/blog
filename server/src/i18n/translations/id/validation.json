@@ -3,7 +3,7 @@
     "required": "Field {field} wajib diisi",
     "invalid": "Format {field} tidak valid",
     "tooShort": "{field} terlalu pendek (minimal {min} karakter)",
-    "tooLong": "{field} terlalu panjang (maksimal {min} karakter)",
+    "tooLong": "{field} terlalu panjang (maksimal {max} karakter)",
     "notUnique": "{field} sudah digunakan"
   },
   "email": {
@@ -12,8 +12,10 @@
     "alreadyExists": "Email sudah terdaftar"
   },
   "password": {
-    "tooWeak": "Password harus mengandung minimal 8 karakter dengan kombinasi huruf besar, huruf kecil, angka dan simbol",
     "required": "Password wajib diisi",
+    "complexity": "Password harus mengandung minimal 8 karakter dengan kombinasi huruf besar, huruf kecil, angka dan simbol",
+    "minLength": "Password minimal 8 karakter",
+    "pattern": "Password harus mengandung kombinasi huruf besar, huruf kecil, angka dan simbol",
     "mismatch": "Konfirmasi password tidak cocok"
   },
   "name": {

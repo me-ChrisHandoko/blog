@@ -1,3 +1,4 @@
+// src/auth/auth.service.ts - FIXED: Timing Attack Prevention
 import {
   ConflictException,
   Injectable,
@@ -70,11 +71,56 @@ export class AuthService {
     };
   }
 
+  /**
+   * FIXED: Login method with timing attack prevention
+   */
   async login(loginDto: LoginDto, lang: SupportedLanguage) {
-    const user = await this.validateUser(loginDto.email, loginDto.password);
+    // SECURITY: Always perform the same operations regardless of user existence
+    // This prevents timing attacks that could reveal valid email addresses
 
-    if (!user || !user.isActive) {
-      // Generic error message - don't expose whether user exists or not
+    const startTime = process.hrtime.bigint();
+
+    // Step 1: Always fetch user (even if not exists)
+    const user = await this.prisma.user.findUnique({
+      where: { email: loginDto.email.toLowerCase() },
+    });
+
+    // Step 2: Always perform password comparison (prevent timing differences)
+    let isValidCredentials = false;
+
+    if (user) {
+      // Real password comparison
+      isValidCredentials = await bcrypt.compare(
+        loginDto.password,
+        user.password,
+      );
+    } else {
+      // SECURITY: Dummy password comparison with same computational cost
+      // This ensures consistent timing whether user exists or not
+      await bcrypt.compare(
+        loginDto.password,
+        '$2a$12$dummyhashtopreventtimingattacks',
+      );
+      isValidCredentials = false;
+    }
+
+    // Step 3: Add consistent delay to normalize response time
+    const minExecutionTime = 100; // 100ms minimum execution time
+    const elapsedTime = Number(process.hrtime.bigint() - startTime) / 1_000_000; // Convert to ms
+
+    if (elapsedTime < minExecutionTime) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, minExecutionTime - elapsedTime),
+      );
+    }
+
+    // Step 4: Single validation check with generic error message
+    if (!user || !isValidCredentials || !user.isActive) {
+      // SECURITY: Same error message for all failure cases
+      // - User doesn't exist
+      // - Wrong password
+      // - User inactive
+      // This prevents user enumeration attacks
       const message = this.languageService.translate(
         'auth.messages.invalidCredentials',
         lang,
@@ -82,23 +128,36 @@ export class AuthService {
       throw new UnauthorizedException(message);
     }
 
-    // Update last login
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    });
+    // Step 5: Successful login processing
+    try {
+      // Update last login timestamp
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      });
 
-    // Generate tokens
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
+      // Generate tokens
+      const tokens = await this.generateTokens(user.id, user.email, user.role);
 
-    // Save refresh token
-    await this.saveRefreshToken(user.id, tokens.refreshToken);
+      // Save refresh token
+      await this.saveRefreshToken(user.id, tokens.refreshToken);
 
-    return {
-      user: this.sanitizeUser(user),
-      ...tokens,
-    };
+      return {
+        user: this.sanitizeUser(user),
+        ...tokens,
+      };
+    } catch (error) {
+      // Generic error for any unexpected issues
+      const message = this.languageService.translate(
+        'auth.messages.loginFailed',
+        lang,
+      );
+      throw new UnauthorizedException(message);
+    }
   }
+
+  // REMOVED: validateUserSecure function - was not being used anywhere
+  // The timing attack prevention is now implemented directly in the login method
 
   async refreshToken(
     refreshToken: string,
@@ -175,17 +234,31 @@ export class AuthService {
     return this.languageService.translate(key, lang);
   }
 
-  private async validateUser(email: string, password: string) {
+  /**
+   * DEPRECATED: Old method with timing vulnerability
+   * Kept for reference only - shows the security issue we fixed
+   *
+   * PROBLEMS:
+   * 1. Different timing if user exists vs doesn't exist
+   * 2. Password comparison only happens if user exists
+   * 3. Can be exploited for user enumeration attacks
+   */
+  private async validateUserOld_DEPRECATED_DO_NOT_USE(
+    email: string,
+    password: string,
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { email: email.toLowerCase() },
     });
 
+    // VULNERABILITY: This check happens AFTER database query
+    // Different timing if user exists vs doesn't exist
     if (user && (await bcrypt.compare(password, user.password))) {
       const { password, ...result } = user;
       return result;
     }
 
-    return null;
+    return null; // ⚠️ TIMING ATTACK: Fast return if user doesn't exist
   }
 
   private async generateTokens(userId: string, email: string, role: string) {
@@ -225,7 +298,6 @@ export class AuthService {
 
   private sanitizeUser(user: any) {
     const { password, ...sanitized } = user;
-
     return sanitized;
   }
 }

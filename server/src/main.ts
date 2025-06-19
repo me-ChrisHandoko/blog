@@ -11,8 +11,9 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { I18nExceptionFilter } from './common/filters/i18n-exception.filter';
 import { LanguageService } from './i18n/services/language.service';
 import { LanguageGuard } from './i18n/guards/language.guard';
+import { EnvConfig } from './config/env.utils';
 import { EnvironmentVariables } from './config/env.validation';
-import { EnvConfig } from './config/env.utils'; // ADDED: Import EnvConfig utility
+import { ErrorResponseInterceptor } from './common/interceptors/error-response.interceptor';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -27,10 +28,12 @@ async function bootstrap() {
       }),
     );
 
-    // FIXED: Use EnvConfig for validation (already validated in AppModule)
-    // No need for manual validation here since EnvConfig.validate() runs in AppModule
+    // FIXED: Initialize EnvConfig manually since onModuleInit hasn't run yet
+    const configService =
+      app.get<ConfigService<EnvironmentVariables>>(ConfigService);
+    EnvConfig.initialize(configService);
 
-    // IMPROVED: Get environment variables using type-safe EnvConfig
+    // Get environment variables using type-safe EnvConfig
     const nodeEnv = EnvConfig.NODE_ENV;
     const port = EnvConfig.PORT;
     const allowedOrigins = EnvConfig.ALLOWED_ORIGINS;
@@ -65,7 +68,7 @@ async function bootstrap() {
       // Compression
       await app.register(require('@fastify/compress'));
 
-      // app.useGlobalInterceptors(new ErrorResponseInterceptor(languageService));
+      app.useGlobalInterceptors(new ErrorResponseInterceptor(languageService));
 
       // IMPROVED: Rate limiting with env vars (only in production)
       if (EnvConfig.isProduction()) {
@@ -139,11 +142,15 @@ async function bootstrap() {
     // IMPROVED: More helpful error messages
     if (error.message?.includes('EADDRINUSE')) {
       logger.error(
-        `Port ${EnvConfig.PORT} is already in use. Please choose a different port.`,
+        `Port ${process.env.PORT || 3001} is already in use. Please choose a different port.`,
       );
     } else if (error.message?.includes('validation')) {
       logger.error(
         'Environment variable validation failed. Please check your .env file.',
+      );
+    } else if (error.message?.includes('EnvConfig not initialized')) {
+      logger.error(
+        'EnvConfig initialization failed. This is likely a module loading issue.',
       );
     }
 

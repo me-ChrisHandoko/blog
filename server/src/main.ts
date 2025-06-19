@@ -7,11 +7,10 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
-import { LanguageGuard } from './i18n/guards/language.guard';
 import { I18nExceptionFilter } from './common/filters/i18n-exception.filter';
 import { LanguageService } from './i18n/services/language.service';
 import { ErrorResponseInterceptor } from './common/interceptors/error-response.interceptor'; // OPTION 1: Use Interceptor
-import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { LanguageGuard } from './i18n/guards/language.guard';
 
 async function bootstrap() {
   // Create NestJS app with Fastify adapter
@@ -51,11 +50,7 @@ async function bootstrap() {
     // Compression
     await app.register(require('@fastify/compress'));
 
-    // OPTION 1: Use Error Response Interceptor (Recommended for Fastify)
     app.useGlobalInterceptors(new ErrorResponseInterceptor(languageService));
-
-    // OPTION 2: Use Exception Filter (Alternative - comment out option 1 if using this)
-    // app.useGlobalFilters(new HttpExceptionFilter(languageService));
 
     console.log('✅ Fastify plugins registered successfully');
   } catch (error) {
@@ -77,6 +72,7 @@ async function bootstrap() {
 
   // Global guards - IMPORTANT: Order matters!
   app.useGlobalGuards(
+    new LanguageGuard(languageService),
     new JwtAuthGuard(reflector), // Then authenticate
   );
 

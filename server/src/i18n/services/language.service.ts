@@ -1,4 +1,4 @@
-// src/i18n/services/language.service.ts - File-based translation with enhanced features
+// src/i18n/services/language.service.ts - FIXED Cache Implementation
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
   SupportedLanguage,
@@ -21,15 +21,17 @@ interface LoadedTranslations {
 }
 
 /**
- * Enhanced File-Based Language Service
- * Loads translations from separate JSON files while maintaining performance
+ * Enhanced File-Based Language Service with Optimized Cache
  */
 @Injectable()
 export class LanguageService implements OnModuleInit {
   private readonly logger = new Logger(LanguageService.name);
   private translations: LoadedTranslations;
   private readonly translationsPath: string;
+
+  // FIXED: Optimized cache with size limit
   private translationCache = new Map<string, string>();
+  private readonly MAX_CACHE_SIZE = 1000; // Limit cache size to prevent memory leaks
 
   constructor() {
     this.translationsPath = path.join(
@@ -257,13 +259,19 @@ export class LanguageService implements OnModuleInit {
   }
 
   /**
-   * Main translation method with caching
+   * FIXED: Main translation method with optimized caching
    */
   translate(
     key: string,
     lang: SupportedLanguage,
     args?: Record<string, any>,
   ): string {
+    // Input validation
+    if (!key || typeof key !== 'string') {
+      this.logger.warn(`Invalid translation key provided: ${key}`);
+      return key || '';
+    }
+
     // Create cache key
     const cacheKey = `${lang}:${key}:${args ? JSON.stringify(args) : ''}`;
 
@@ -297,6 +305,22 @@ export class LanguageService implements OnModuleInit {
 
     // Interpolate arguments
     const result = this.interpolateArgs(translation, args);
+
+    // FIXED: Implement LRU-style cache cleanup to prevent memory leaks
+    if (this.translationCache.size >= this.MAX_CACHE_SIZE) {
+      // Remove oldest entries (first 100 entries)
+      const keysToDelete = Array.from(this.translationCache.keys()).slice(
+        0,
+        100,
+      );
+      keysToDelete.forEach((keyToDelete) => {
+        this.translationCache.delete(keyToDelete);
+      });
+
+      this.logger.debug(
+        `🗑️  Cache cleanup: removed ${keysToDelete.length} old entries`,
+      );
+    }
 
     // Cache the result
     this.translationCache.set(cacheKey, result);
@@ -513,12 +537,24 @@ export class LanguageService implements OnModuleInit {
   }
 
   /**
-   * Get cache statistics
+   * IMPROVED: Get cache statistics with memory usage info
    */
-  getCacheStats(): { size: number; keys: string[] } {
+  getCacheStats(): {
+    size: number;
+    maxSize: number;
+    keys: string[];
+    memoryEstimate: string;
+  } {
+    // Rough estimate of memory usage
+    const avgKeySize = 50; // average bytes per cache key+value
+    const memoryBytes = this.translationCache.size * avgKeySize;
+    const memoryMB = (memoryBytes / 1024 / 1024).toFixed(2);
+
     return {
       size: this.translationCache.size,
+      maxSize: this.MAX_CACHE_SIZE,
       keys: Array.from(this.translationCache.keys()).slice(0, 10), // First 10 keys for debugging
+      memoryEstimate: `~${memoryMB} MB`,
     };
   }
 
@@ -526,8 +562,11 @@ export class LanguageService implements OnModuleInit {
    * Clear translation cache
    */
   clearCache(): void {
+    const previousSize = this.translationCache.size;
     this.translationCache.clear();
-    this.logger.log('🗑️  Translation cache cleared');
+    this.logger.log(
+      `🗑️  Translation cache cleared (${previousSize} entries removed)`,
+    );
   }
 
   /**

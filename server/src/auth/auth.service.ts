@@ -73,18 +73,10 @@ export class AuthService {
   async login(loginDto: LoginDto, lang: SupportedLanguage) {
     const user = await this.validateUser(loginDto.email, loginDto.password);
 
-    if (!user) {
+    if (!user || !user.isActive) {
+      // Generic error message - don't expose whether user exists or not
       const message = this.languageService.translate(
         'auth.messages.invalidCredentials',
-        lang,
-      );
-
-      throw new UnauthorizedException(message);
-    }
-
-    if (!user.isActive) {
-      const message = this.languageService.translate(
-        'auth.messages.accountDeactivated',
         lang,
       );
       throw new UnauthorizedException(message);

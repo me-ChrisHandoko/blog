@@ -16,20 +16,3 @@ export const CurrentLanguage = createParamDecorator(
     return request.detectedLanguage || getDefaultLanguage();
   },
 );
-
-/**
- * Decorator untuk mendapatkan language service instance
- * Berguna untuk translation langsung di controller
- */
-export const Translate = createParamDecorator(
-  (translationKey: string, ctx: ExecutionContext) => {
-    const request = ctx.switchToHttp().getRequest();
-    const language = request.detectedLanguage || getDefaultLanguage();
-
-    // Return function yang bisa dipanggil dengan args
-    return (args?: Record<string, any>) => {
-      // Akan diimplementasi dengan I18nService injection
-      return translationKey; // Placeholder
-    };
-  },
-);

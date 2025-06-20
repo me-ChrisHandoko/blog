@@ -77,41 +77,41 @@ export class EnvConfig {
   }
 
   // Redis Configuration (Optional)
-  static get REDIS_HOST(): string | undefined {
-    EnvConfig.ensureInitialized();
-    return EnvConfig.configService.get('REDIS_HOST', { infer: true });
-  }
+  // static get REDIS_HOST(): string | undefined {
+  //   EnvConfig.ensureInitialized();
+  //   return EnvConfig.configService.get('REDIS_HOST', { infer: true });
+  // }
 
-  static get REDIS_PORT(): number {
-    EnvConfig.ensureInitialized();
-    return EnvConfig.configService.get('REDIS_PORT', { infer: true })!;
-  }
+  // static get REDIS_PORT(): number {
+  //   EnvConfig.ensureInitialized();
+  //   return EnvConfig.configService.get('REDIS_PORT', { infer: true })!;
+  // }
 
-  static get REDIS_PASSWORD(): string | undefined {
-    EnvConfig.ensureInitialized();
-    return EnvConfig.configService.get('REDIS_PASSWORD', { infer: true });
-  }
+  // static get REDIS_PASSWORD(): string | undefined {
+  //   EnvConfig.ensureInitialized();
+  //   return EnvConfig.configService.get('REDIS_PASSWORD', { infer: true });
+  // }
 
   // Email Configuration (Optional)
-  static get SMTP_HOST(): string | undefined {
-    EnvConfig.ensureInitialized();
-    return EnvConfig.configService.get('SMTP_HOST', { infer: true });
-  }
+  // static get SMTP_HOST(): string | undefined {
+  //   EnvConfig.ensureInitialized();
+  //   return EnvConfig.configService.get('SMTP_HOST', { infer: true });
+  // }
 
-  static get SMTP_PORT(): number {
-    EnvConfig.ensureInitialized();
-    return EnvConfig.configService.get('SMTP_PORT', { infer: true })!;
-  }
+  // static get SMTP_PORT(): number {
+  //   EnvConfig.ensureInitialized();
+  //   return EnvConfig.configService.get('SMTP_PORT', { infer: true })!;
+  // }
 
-  static get SMTP_USER(): string | undefined {
-    EnvConfig.ensureInitialized();
-    return EnvConfig.configService.get('SMTP_USER', { infer: true });
-  }
+  // static get SMTP_USER(): string | undefined {
+  //   EnvConfig.ensureInitialized();
+  //   return EnvConfig.configService.get('SMTP_USER', { infer: true });
+  // }
 
-  static get SMTP_PASS(): string | undefined {
-    EnvConfig.ensureInitialized();
-    return EnvConfig.configService.get('SMTP_PASS', { infer: true });
-  }
+  // static get SMTP_PASS(): string | undefined {
+  //   EnvConfig.ensureInitialized();
+  //   return EnvConfig.configService.get('SMTP_PASS', { infer: true });
+  // }
 
   // Security Settings
   static get BCRYPT_ROUNDS(): number {

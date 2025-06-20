@@ -23,7 +23,7 @@ export class PrismaService
   async onModuleInit(): Promise<void> {
     try {
       // Explicit type annotation resolves the TypeScript warning
-      await (this.$connect() as Promise<void>);
+      await this.$connect();
       this.logger.log('✅ Database connected successfully');
 
       // Optional: Test the connection with a simple query
@@ -38,7 +38,7 @@ export class PrismaService
 
   async onModuleDestroy(): Promise<void> {
     try {
-      await (this.$disconnect() as Promise<void>);
+      await this.$disconnect();
       this.logger.log('✅ Database disconnected gracefully');
     } catch (error) {
       this.logger.error('❌ Error during database disconnection:', error);

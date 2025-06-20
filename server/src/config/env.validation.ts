@@ -47,24 +47,24 @@ export const envValidationSchema = Joi.object({
     .description('Comma-separated list of allowed CORS origins'),
 
   // Optional: Redis Configuration (if using Redis for caching)
-  // REDIS_HOST: Joi.string().hostname().when('NODE_ENV', {
-  //   is: 'production',
-  //   then: Joi.required(),
-  //   otherwise: Joi.optional(),
-  // }),
+  REDIS_HOST: Joi.string().hostname().when('NODE_ENV', {
+    is: 'production',
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
 
-  // REDIS_PORT: Joi.number().port().default(6379),
+  REDIS_PORT: Joi.number().port().default(6379),
 
-  // REDIS_PASSWORD: Joi.string().optional(),
+  REDIS_PASSWORD: Joi.string().optional(),
 
   // Optional: Email Configuration (if using email service)
-  // SMTP_HOST: Joi.string().hostname().optional(),
+  SMTP_HOST: Joi.string().hostname().optional(),
 
-  // SMTP_PORT: Joi.number().port().default(587),
+  SMTP_PORT: Joi.number().port().default(587),
 
-  // SMTP_USER: Joi.string().email().optional(),
+  SMTP_USER: Joi.string().email().optional(),
 
-  // SMTP_PASS: Joi.string().optional(),
+  SMTP_PASS: Joi.string().optional(),
 
   // Security Settings
   BCRYPT_ROUNDS: Joi.number()

@@ -8,6 +8,7 @@ import {
 } from '../constants/languages';
 import * as fs from 'fs';
 import * as path from 'path';
+import { LRUCache, CacheMetrics } from '../../common/cache/lru-cache';
 
 // Translation interfaces for better type safety
 interface TranslationFile {
@@ -30,8 +31,9 @@ export class LanguageService implements OnModuleInit {
   private readonly translationsPath: string;
 
   // FIXED: Optimized cache with size limit
-  private translationCache = new Map<string, string>();
-  private readonly MAX_CACHE_SIZE = 1000; // Limit cache size to prevent memory leaks
+  // private translationCache = new Map<string, string>();
+  // private readonly MAX_CACHE_SIZE = 1000; // Limit cache size to prevent memory leaks
+  private translationCache = new LRUCache<string, string>(1000);
 
   constructor() {
     this.translationsPath = path.join(
@@ -259,7 +261,7 @@ export class LanguageService implements OnModuleInit {
   }
 
   /**
-   * FIXED: Main translation method with optimized caching
+   * ENHANCED: Main translation method with LRU caching
    */
   translate(
     key: string,
@@ -275,12 +277,13 @@ export class LanguageService implements OnModuleInit {
     // Create cache key
     const cacheKey = `${lang}:${key}:${args ? JSON.stringify(args) : ''}`;
 
-    // Check cache first
-    if (this.translationCache.has(cacheKey)) {
-      return this.translationCache.get(cacheKey)!;
+    // Try cache first (LRU automatically handles access tracking)
+    const cached = this.translationCache.get(cacheKey);
+    if (cached) {
+      return cached;
     }
 
-    // Get translation using path notation (e.g., 'auth.messages.loginSuccess')
+    // Cache miss - get translation using path notation
     let translation = this.getNestedTranslation(key, lang);
 
     if (!translation) {
@@ -306,23 +309,7 @@ export class LanguageService implements OnModuleInit {
     // Interpolate arguments
     const result = this.interpolateArgs(translation, args);
 
-    // FIXED: Implement LRU-style cache cleanup to prevent memory leaks
-    if (this.translationCache.size >= this.MAX_CACHE_SIZE) {
-      // Remove oldest entries (first 100 entries)
-      const keysToDelete = Array.from(this.translationCache.keys()).slice(
-        0,
-        100,
-      );
-      keysToDelete.forEach((keyToDelete) => {
-        this.translationCache.delete(keyToDelete);
-      });
-
-      this.logger.debug(
-        `🗑️  Cache cleanup: removed ${keysToDelete.length} old entries`,
-      );
-    }
-
-    // Cache the result
+    // Cache the result (LRU handles eviction automatically)
     this.translationCache.set(cacheKey, result);
 
     return result;
@@ -537,33 +524,59 @@ export class LanguageService implements OnModuleInit {
   }
 
   /**
-   * IMPROVED: Get cache statistics with memory usage info
+   * ENHANCED: Get comprehensive cache statistics
    */
-  getCacheStats(): {
-    size: number;
-    maxSize: number;
-    keys: string[];
-    memoryEstimate: string;
+  getCacheStats(): CacheMetrics & {
+    efficiency: 'excellent' | 'good' | 'fair' | 'poor';
+    recommendations: string[];
+    mostAccessed: Array<{ key: string; accessCount: number }>;
+    leastAccessed: Array<{ key: string; accessCount: number }>;
   } {
-    // Rough estimate of memory usage
-    const avgKeySize = 50; // average bytes per cache key+value
-    const memoryBytes = this.translationCache.size * avgKeySize;
-    const memoryMB = (memoryBytes / 1024 / 1024).toFixed(2);
+    const metrics = this.translationCache.getMetrics();
+
+    // Determine cache efficiency
+    let efficiency: 'excellent' | 'good' | 'fair' | 'poor';
+    if (metrics.hitRate >= 90) efficiency = 'excellent';
+    else if (metrics.hitRate >= 75) efficiency = 'good';
+    else if (metrics.hitRate >= 50) efficiency = 'fair';
+    else efficiency = 'poor';
+
+    // Generate recommendations
+    const recommendations: string[] = [];
+    if (metrics.hitRate < 70) {
+      recommendations.push(
+        'Consider increasing cache size or reviewing cache keys',
+      );
+    }
+    if (metrics.size < metrics.maxSize * 0.5) {
+      recommendations.push('Cache is underutilized, could reduce max size');
+    }
+    if (metrics.size === metrics.maxSize) {
+      recommendations.push(
+        'Cache is at capacity, consider increasing max size',
+      );
+    }
 
     return {
-      size: this.translationCache.size,
-      maxSize: this.MAX_CACHE_SIZE,
-      keys: Array.from(this.translationCache.keys()).slice(0, 10), // First 10 keys for debugging
-      memoryEstimate: `~${memoryMB} MB`,
+      ...metrics,
+      efficiency,
+      recommendations,
+      mostAccessed: this.translationCache.getMostAccessed(5),
+      leastAccessed: this.translationCache.getLeastAccessed(5),
     };
   }
 
   /**
-   * Clear translation cache
+   * Clear translation cache and optionally reset metrics
    */
-  clearCache(): void {
-    const previousSize = this.translationCache.size;
+  clearCache(resetMetrics: boolean = false): void {
+    const previousSize = this.translationCache.size();
     this.translationCache.clear();
+
+    if (resetMetrics) {
+      this.translationCache.resetMetrics();
+    }
+
     this.logger.log(
       `🗑️  Translation cache cleared (${previousSize} entries removed)`,
     );

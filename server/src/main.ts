@@ -71,14 +71,22 @@ async function bootstrap() {
       app.useGlobalInterceptors(new ErrorResponseInterceptor(languageService));
 
       // IMPROVED: Rate limiting with env vars (only in production)
+
       if (EnvConfig.isProduction()) {
         await app.register(require('@fastify/rate-limit'), {
           max: rateLimitMax,
           timeWindow: rateLimitTtl,
-          errorResponseBuilder: () => ({
+          keyGenerator: (request) => {
+            return request.user?.id || request.ip;
+          },
+          errorResponseBuilder: (request, context) => ({
             error: 'Too Many Requests',
-            message: 'Rate limit exceeded, please try again later.',
+            message: this.languageService.translate(
+              'auth.messages.rateLimitExceeded',
+              request.detectedLanguage || 'id',
+            ),
             statusCode: 429,
+            retryAfter: Math.round(context.ttl / 1000),
           }),
         });
         logger.log(

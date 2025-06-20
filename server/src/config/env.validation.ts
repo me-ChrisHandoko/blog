@@ -58,13 +58,13 @@ export const envValidationSchema = Joi.object({
   // REDIS_PASSWORD: Joi.string().optional(),
 
   // Optional: Email Configuration (if using email service)
-  SMTP_HOST: Joi.string().hostname().optional(),
+  // SMTP_HOST: Joi.string().hostname().optional(),
 
-  SMTP_PORT: Joi.number().port().default(587),
+  // SMTP_PORT: Joi.number().port().default(587),
 
-  SMTP_USER: Joi.string().email().optional(),
+  // SMTP_USER: Joi.string().email().optional(),
 
-  SMTP_PASS: Joi.string().optional(),
+  // SMTP_PASS: Joi.string().optional(),
 
   // Security Settings
   BCRYPT_ROUNDS: Joi.number()

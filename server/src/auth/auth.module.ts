@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { ScheduleModule } from '@nestjs/schedule'; // FIXED: Added ScheduleModule import
 import { UsersModule } from 'src/users/users.module';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -13,6 +14,7 @@ import { AppI18nModule } from 'src/i18n/i18n.module';
     UsersModule,
     PassportModule,
     AppI18nModule,
+    ScheduleModule.forRoot(), // FIXED: Added ScheduleModule for @Cron decorator
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({

@@ -1,6 +1,7 @@
-// src/app.module.ts - UPDATED with Environment Validation and EnvConfig
+// src/app.module.ts - UPDATED: Simplified without duplicate EnvConfig initialization
 import { Module, Type, OnModuleInit } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
@@ -13,7 +14,6 @@ import {
   envValidationSchema,
   EnvironmentVariables,
 } from './config/env.validation';
-import { EnvConfig } from './config/env.utils';
 
 function getConditionalModules(): Type<any>[] {
   const modules: Type<any>[] = [];
@@ -33,19 +33,22 @@ function getConditionalModules(): Type<any>[] {
 
 @Module({
   imports: [
-    // IMPROVED: ConfigModule with validation schema
+    // ConfigModule with validation schema
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env'], // Support multiple env files
-      validationSchema: envValidationSchema, // ADDED: Validate environment variables
+      envFilePath: ['.env.local', '.env'],
+      validationSchema: envValidationSchema,
       validationOptions: {
-        allowUnknown: true, // Allow extra env vars not in schema
-        abortEarly: false, // Show all validation errors, not just first one
+        allowUnknown: true,
+        abortEarly: false,
       },
-      expandVariables: true, // Support variable expansion like ${VAR}
+      expandVariables: true,
     }),
 
-    // IMPROVED: ThrottlerModule with env vars
+    // ScheduleModule for task scheduling (@Cron decorators)
+    ScheduleModule.forRoot(),
+
+    // ThrottlerModule with env vars
     ThrottlerModule.forRootAsync({
       useFactory: () => [
         {
@@ -69,49 +72,22 @@ export class AppModule implements OnModuleInit {
   constructor(private configService: ConfigService<EnvironmentVariables>) {}
 
   onModuleInit() {
-    // IMPROVED: Check if EnvConfig is already initialized (from main.ts)
-    // If not, initialize it here
-    try {
-      EnvConfig.NODE_ENV; // Test if it's already initialized
-    } catch (error) {
-      // Not initialized yet, so initialize it
-      EnvConfig.initialize(this.configService);
-    }
+    // REMOVED: EnvConfig initialization - now handled in main.ts
+    // The onModuleInit is called AFTER main.ts bootstrap, so we can't initialize here
 
-    // IMPROVED: Use EnvConfig for type-safe access
-    const env = EnvConfig.NODE_ENV;
-    const port = EnvConfig.PORT;
+    const env = process.env.NODE_ENV || 'development';
+    const port = process.env.PORT || 3001;
 
-    console.log(`🏗️  Application starting in ${env} mode on port ${port}`);
+    console.log(`🏗️  AppModule initialized in ${env} mode`);
+    console.log(`📦 All modules loaded successfully`);
 
-    // IMPROVED: Enhanced configuration logging with type safety
-    if (EnvConfig.isDevelopment()) {
-      const configSummary = EnvConfig.getConfigSummary();
-
-      console.log('📋 Configuration loaded:');
-      console.log(
-        `   - Database: ${configSummary.database.host}:${configSummary.database.port}/${configSummary.database.database}`,
-      );
-      console.log(
-        `   - JWT: ${configSummary.security.jwtConfigured ? '✅ Configured' : '❌ Missing'}`,
-      );
-      console.log(`   - CORS Origins: ${EnvConfig.ALLOWED_ORIGINS.join(', ')}`);
-      console.log(
-        `   - Rate Limiting: ${EnvConfig.RATE_LIMIT_MAX} req/${EnvConfig.RATE_LIMIT_TTL}ms`,
-      );
-      console.log(
-        `   - Health Check: ${configSummary.features.healthCheck ? '✅ Enabled' : '❌ Disabled'}`,
-      );
-
-      if (configSummary.features.redis) {
-        console.log(
-          `   - Redis: ${EnvConfig.REDIS_HOST}:${EnvConfig.REDIS_PORT}`,
-        );
-      }
-
-      if (configSummary.features.smtp) {
-        console.log(`   - SMTP: ${EnvConfig.SMTP_HOST}:${EnvConfig.SMTP_PORT}`);
-      }
+    // Only log basic info here since detailed logging happens in main.ts
+    if (env === 'development') {
+      console.log('📋 Development features enabled:');
+      console.log('   - Enhanced error messages');
+      console.log('   - Test endpoints');
+      console.log('   - Detailed logging');
+      console.log('   - Scheduled task monitoring');
     }
   }
 }

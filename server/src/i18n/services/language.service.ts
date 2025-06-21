@@ -1,4 +1,4 @@
-// src/i18n/services/language.service.ts - FIXED Cache Implementation
+// src/i18n/services/language.service.ts - FIXED Version
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
   SupportedLanguage,
@@ -31,9 +31,8 @@ export class LanguageService implements OnModuleInit {
   private readonly translationsPath: string;
 
   // FIXED: Optimized cache with size limit
-  private translationCache = new LRUCache<string, string>(500); // Reduce size
-  private fileStatsCache = new LRUCache<string, any>(10); // Add file stats cache
-  // private translationCache = new LRUCache<string, string>(1000);
+  private translationCache = new LRUCache<string, string>(500);
+  private fileStatsCache = new LRUCache<string, any>(10);
 
   constructor() {
     this.translationsPath = path.join(
@@ -51,6 +50,9 @@ export class LanguageService implements OnModuleInit {
     this.logger.log('✅ File-based translations loaded successfully');
   }
 
+  /**
+   * Pre-populate cache with essential translations
+   */
   private async warmCache(): Promise<void> {
     const commonKeys = [
       'auth.messages.loginSuccess',
@@ -201,10 +203,16 @@ export class LanguageService implements OnModuleInit {
     return keys;
   }
 
+  /**
+   * Get default language
+   */
   getDefaultLanguage(): SupportedLanguage {
     return getDefaultLanguage();
   }
 
+  /**
+   * Detect language from various sources with priority
+   */
   detectLanguageFromSources(sources: {
     query?: string;
     header?: string;
@@ -233,7 +241,7 @@ export class LanguageService implements OnModuleInit {
       return userPreference;
     }
 
-    // Priority 4: Accept-Language header dari browser
+    // Priority 4: Accept-Language header from browser
     if (acceptLanguage) {
       const detectedLang = this.parseAcceptLanguageHeader(acceptLanguage);
       if (detectedLang) {
@@ -244,12 +252,15 @@ export class LanguageService implements OnModuleInit {
       }
     }
 
-    // Fallback ke bahasa default
+    // Fallback to default language
     const defaultLang = this.getDefaultLanguage();
     this.logger.debug(`Using default language: ${defaultLang}`);
     return defaultLang;
   }
 
+  /**
+   * Parse Accept-Language header from browser
+   */
   private parseAcceptLanguageHeader(
     acceptLanguage: string,
   ): SupportedLanguage | null {
@@ -279,7 +290,7 @@ export class LanguageService implements OnModuleInit {
   }
 
   /**
-   * ENHANCED: Main translation method with LRU caching
+   * Main translation method with LRU caching
    */
   translate(
     key: string,
@@ -359,6 +370,20 @@ export class LanguageService implements OnModuleInit {
   }
 
   /**
+   * Simple string interpolation for arguments
+   */
+  private interpolateArgs(
+    template: string,
+    args?: Record<string, any>,
+  ): string {
+    if (!args) return template;
+
+    return Object.keys(args).reduce((result, key) => {
+      return result.replace(new RegExp(`{${key}}`, 'g'), String(args[key]));
+    }, template);
+  }
+
+  /**
    * Type-safe translation methods for specific modules
    */
   translateAuth(key: string, lang: SupportedLanguage): string {
@@ -389,20 +414,6 @@ export class LanguageService implements OnModuleInit {
     args?: Record<string, any>,
   ): string {
     return this.translate(`common.${category}.${key}`, lang, args);
-  }
-
-  /**
-   * Simple string interpolation for arguments
-   */
-  private interpolateArgs(
-    template: string,
-    args?: Record<string, any>,
-  ): string {
-    if (!args) return template;
-
-    return Object.keys(args).reduce((result, key) => {
-      return result.replace(new RegExp(`{${key}}`, 'g'), String(args[key]));
-    }, template);
   }
 
   /**
@@ -454,11 +465,16 @@ export class LanguageService implements OnModuleInit {
     return !!(this.translations[lang] && this.translations[lang][fileName]);
   }
 
-  // All other methods remain the same...
+  /**
+   * Get language metadata
+   */
   getLanguageMetadata(lang: SupportedLanguage) {
     return LanguageMetadata[lang];
   }
 
+  /**
+   * Get supported languages with metadata
+   */
   getSupportedLanguagesWithMetadata() {
     return Object.values(SupportedLanguage).map((lang) => ({
       code: lang,
@@ -466,6 +482,9 @@ export class LanguageService implements OnModuleInit {
     }));
   }
 
+  /**
+   * Validate language and return valid one or default
+   */
   validateLanguage(lang: string): SupportedLanguage {
     if (!isValidLanguage(lang)) {
       this.logger.warn(
@@ -476,6 +495,9 @@ export class LanguageService implements OnModuleInit {
     return lang;
   }
 
+  /**
+   * Convert Prisma language to supported language
+   */
   prismaToSupported(prismaLang: string): SupportedLanguage {
     const langMap: Record<string, SupportedLanguage> = {
       ID: SupportedLanguage.INDONESIAN,
@@ -485,6 +507,9 @@ export class LanguageService implements OnModuleInit {
     return langMap[prismaLang] || this.getDefaultLanguage();
   }
 
+  /**
+   * Convert supported language to Prisma language
+   */
   supportedToPrisma(supportedLang: SupportedLanguage): string {
     const langMap: Record<SupportedLanguage, string> = {
       [SupportedLanguage.INDONESIAN]: 'ID',
@@ -494,33 +519,51 @@ export class LanguageService implements OnModuleInit {
     return langMap[supportedLang] || 'ID';
   }
 
+  /**
+   * Check if language is supported
+   */
   isSupported(lang: string): lang is SupportedLanguage {
     return isValidLanguage(lang);
   }
 
+  /**
+   * Get all supported languages
+   */
   getSupportedLanguages(): SupportedLanguage[] {
     return Object.values(SupportedLanguage);
   }
 
+  /**
+   * Get native name of language
+   */
   getNativeName(lang: SupportedLanguage): string {
     return this.getLanguageMetadata(lang).nativeName;
   }
 
+  /**
+   * Get English name of language
+   */
   getEnglishName(lang: SupportedLanguage): string {
     return this.getLanguageMetadata(lang).name;
   }
 
+  /**
+   * Get language flag emoji
+   */
   getLanguageFlag(lang: SupportedLanguage): string {
     return this.getLanguageMetadata(lang).flag;
   }
 
+  /**
+   * Get display name with flag and native name
+   */
   getDisplayName(lang: SupportedLanguage): string {
     const metadata = this.getLanguageMetadata(lang);
     return `${metadata.flag} ${metadata.nativeName}`;
   }
 
   /**
-   * Debug method to list all available translations
+   * Get all available translations for a language
    */
   getAvailableTranslations(lang: SupportedLanguage): string[] {
     if (!this.translations[lang]) return [];
@@ -535,14 +578,14 @@ export class LanguageService implements OnModuleInit {
   }
 
   /**
-   * Get all translations for a specific section (for debugging)
+   * Get all translations for a specific section
    */
   getTranslationSection(section: string, lang: SupportedLanguage): any {
     return this.translations[lang]?.[section] || null;
   }
 
   /**
-   * ENHANCED: Get comprehensive cache statistics
+   * Get comprehensive cache statistics
    */
   getCacheStats(): CacheMetrics & {
     efficiency: 'excellent' | 'good' | 'fair' | 'poor';
@@ -601,7 +644,7 @@ export class LanguageService implements OnModuleInit {
   }
 
   /**
-   * Get file modification stats (for cache invalidation)
+   * Get file modification stats
    */
   getFileStats(): Record<SupportedLanguage, Record<string, any>> {
     const stats: Record<SupportedLanguage, Record<string, any>> = {} as any;

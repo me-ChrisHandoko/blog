@@ -26,6 +26,52 @@ export class AuthService {
     private languageService: LanguageService,
   ) {}
 
+  @Cron('0 0 * * *') // Daily cleanup
+  async cleanupExpiredSessions() {
+    const deleted = await this.prisma.session.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lt: new Date() } },
+          {
+            isActive: false,
+            updatedAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+          },
+        ],
+      },
+    });
+
+    Logger.log(`🧹 Cleaned up ${deleted.count} expired sessions`);
+  }
+
+  async getSessionAnalytics(userId: string) {
+    return this.prisma.session.groupBy({
+      by: ['userAgent'],
+      where: { userId, isActive: true },
+      _count: true,
+    });
+  }
+
+  async getActiveSessions(userId: string) {
+    return this.prisma.session.findMany({
+      where: { userId, isActive: true },
+      select: {
+        id: true,
+        userAgent: true,
+        ipAddress: true,
+        createdAt: true,
+        expiresAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async terminateSession(userId: string, sessionId: string) {
+    return this.prisma.session.update({
+      where: { id: sessionId, userId },
+      data: { isActive: false },
+    });
+  }
+
   async register(registerDto: RegisterDto, lang: SupportedLanguage) {
     // Validate password confirmation
     if (registerDto.password !== registerDto.confirmPassword) {

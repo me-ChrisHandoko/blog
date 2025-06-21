@@ -23,8 +23,9 @@ async function bootstrap() {
     const app = await NestFactory.create<NestFastifyApplication>(
       AppModule,
       new FastifyAdapter({
-        logger: process.env.NODE_ENV !== 'production',
+        logger: !EnvConfig.isProduction(), // Disable in production
         trustProxy: true,
+        disableRequestLogging: EnvConfig.isProduction(),
       }),
     );
 
@@ -74,24 +75,32 @@ async function bootstrap() {
 
       if (EnvConfig.isProduction()) {
         await app.register(require('@fastify/rate-limit'), {
-          max: rateLimitMax,
-          timeWindow: rateLimitTtl,
+          max: EnvConfig.RATE_LIMIT_MAX,
+          timeWindow: EnvConfig.RATE_LIMIT_TTL,
           keyGenerator: (request) => {
-            return request.user?.id || request.ip;
+            // Use user ID if authenticated, otherwise IP
+            return (
+              request.user?.id ||
+              request.headers['x-forwarded-for'] ||
+              request.ip
+            );
           },
           errorResponseBuilder: (request, context) => ({
             error: 'Too Many Requests',
-            message: this.languageService.translate(
-              'auth.messages.rateLimitExceeded',
-              request.detectedLanguage || 'id',
-            ),
             statusCode: 429,
             retryAfter: Math.round(context.ttl / 1000),
           }),
+          // REDIS-based rate limiting for distributed systems
+          store: EnvConfig.REDIS_HOST
+            ? {
+                type: 'redis',
+                options: {
+                  host: EnvConfig.REDIS_HOST,
+                  port: EnvConfig.REDIS_PORT,
+                },
+              }
+            : undefined,
         });
-        logger.log(
-          `⚡ Rate limiting enabled: ${rateLimitMax} req/${rateLimitTtl}ms`,
-        );
       }
 
       logger.log('✅ Fastify plugins registered successfully');
@@ -104,14 +113,14 @@ async function bootstrap() {
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
-        forbidNonWhitelisted: EnvConfig.isDevelopment(), // Only in dev
+        forbidNonWhitelisted: false, // Disable in production for performance
         transform: true,
         transformOptions: {
-          enableImplicitConversion: false, // Disable expensive conversion
+          enableImplicitConversion: false,
         },
-        skipMissingProperties: false,
-        skipNullProperties: false,
-        skipUndefinedProperties: false,
+        // CRITICAL: Skip validation for known routes in production
+        skipMissingProperties: EnvConfig.isProduction(),
+        disableErrorMessages: EnvConfig.isProduction(),
       }),
     );
 

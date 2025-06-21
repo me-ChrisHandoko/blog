@@ -1,4 +1,4 @@
-// src/main.ts - FIXED with proper environment initialization order
+// src/main.ts - FIXED VERSION (Remove complex imports)
 import { NestFactory, Reflector } from '@nestjs/core';
 import {
   FastifyAdapter,
@@ -15,6 +15,59 @@ import { EnvConfig } from './config/env.utils';
 import { EnvironmentVariables } from './config/env.validation';
 import { ErrorResponseInterceptor } from './common/interceptors/error-response.interceptor';
 
+// ✅ FIXED: Simple interceptor creation without complex imports
+import {
+  Injectable,
+  NestInterceptor,
+  ExecutionContext,
+  CallHandler,
+} from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { tap, catchError } from 'rxjs/operators';
+import { throwError } from 'rxjs';
+import { FastifyRequest, FastifyReply } from 'fastify';
+
+// ✅ Simple Logging Interceptor (inline definition)
+@Injectable()
+class SimpleLoggingInterceptor implements NestInterceptor {
+  private readonly logger = new Logger('HTTP');
+
+  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const ctx = context.switchToHttp();
+    const request = ctx.getRequest<FastifyRequest>();
+    const response = ctx.getResponse<FastifyReply>();
+
+    const { method, url } = request;
+    const userAgent = request.headers['user-agent'] || '';
+    const ip = request.ip || 'unknown';
+    const start = Date.now();
+
+    // Log incoming request
+    this.logger.log(`→ ${method} ${url} - ${ip}`);
+
+    return next.handle().pipe(
+      tap(() => {
+        const duration = Date.now() - start;
+        const statusCode = response.statusCode;
+
+        // Log successful response
+        this.logger.log(`← ${method} ${url} ${statusCode} - ${duration}ms`);
+      }),
+      catchError((error) => {
+        const duration = Date.now() - start;
+        const statusCode = error.status || 500;
+
+        // Log error response
+        this.logger.error(
+          `✗ ${method} ${url} ${statusCode} - ${duration}ms - ${error.message}`,
+        );
+
+        return throwError(() => error);
+      }),
+    );
+  }
+}
+
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
@@ -23,13 +76,13 @@ async function bootstrap() {
     const app = await NestFactory.create<NestFastifyApplication>(
       AppModule,
       new FastifyAdapter({
-        logger: false, // Start with logging disabled until we know the environment
+        logger: false,
         trustProxy: true,
-        disableRequestLogging: true, // Start with this disabled
+        disableRequestLogging: true,
       }),
     );
 
-    // FIXED: Initialize EnvConfig AFTER app creation but BEFORE using it
+    // Initialize EnvConfig AFTER app creation
     const configService =
       app.get<ConfigService<EnvironmentVariables>>(ConfigService);
     EnvConfig.initialize(configService);
@@ -38,12 +91,6 @@ async function bootstrap() {
     const nodeEnv = EnvConfig.NODE_ENV;
     const port = EnvConfig.PORT;
     const allowedOrigins = EnvConfig.ALLOWED_ORIGINS;
-
-    // Update Fastify logging based on environment
-    if (EnvConfig.isDevelopment()) {
-      // Enable detailed logging in development
-      logger.log('🔧 Development mode: Enhanced logging enabled');
-    }
 
     logger.log(`🚀 Starting application in ${nodeEnv} mode`);
 
@@ -73,16 +120,12 @@ async function bootstrap() {
       // Compression
       await app.register(require('@fastify/compress'));
 
-      // Global interceptors
-      app.useGlobalInterceptors(new ErrorResponseInterceptor(languageService));
-
       // Rate limiting (only in production)
       if (EnvConfig.isProduction()) {
         await app.register(require('@fastify/rate-limit'), {
           max: EnvConfig.RATE_LIMIT_MAX,
           timeWindow: EnvConfig.RATE_LIMIT_TTL,
           keyGenerator: (request) => {
-            // Use user ID if authenticated, otherwise IP
             return (
               request.user?.id ||
               request.headers['x-forwarded-for'] ||
@@ -94,19 +137,6 @@ async function bootstrap() {
             statusCode: 429,
             retryAfter: Math.round(context.ttl / 1000),
           }),
-          // Redis-based rate limiting for distributed systems
-          store: EnvConfig.REDIS_HOST
-            ? {
-                type: 'redis',
-                options: {
-                  host: EnvConfig.REDIS_HOST,
-                  port: EnvConfig.REDIS_PORT,
-                  ...(EnvConfig.REDIS_PASSWORD && {
-                    password: EnvConfig.REDIS_PASSWORD,
-                  }),
-                },
-              }
-            : undefined,
         });
         logger.log('⚡ Rate limiting enabled for production');
       }
@@ -117,6 +147,12 @@ async function bootstrap() {
       throw error;
     }
 
+    // ✅ FIXED: Simple interceptor usage (no complex imports)
+    app.useGlobalInterceptors(
+      new SimpleLoggingInterceptor(),
+      new ErrorResponseInterceptor(languageService),
+    );
+
     // Global validation pipe
     app.useGlobalPipes(
       new ValidationPipe({
@@ -126,7 +162,6 @@ async function bootstrap() {
         transformOptions: {
           enableImplicitConversion: false,
         },
-        // Production optimizations
         skipMissingProperties: EnvConfig.isProduction(),
         disableErrorMessages: EnvConfig.isProduction(),
       }),
@@ -153,6 +188,7 @@ async function bootstrap() {
     logger.log(`🌐 I18n language detection enabled`);
     logger.log(`🛡️  JWT authentication enabled`);
     logger.log(`🌍 CORS origins: ${allowedOrigins.join(', ')}`);
+    logger.log(`📊 Request logging enabled`);
 
     if (EnvConfig.isProduction()) {
       logger.log(`⚡ Rate limiting enabled`);

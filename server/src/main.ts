@@ -104,13 +104,14 @@ async function bootstrap() {
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
-        forbidNonWhitelisted: true,
+        forbidNonWhitelisted: EnvConfig.isDevelopment(), // Only in dev
         transform: true,
         transformOptions: {
-          enableImplicitConversion: true,
+          enableImplicitConversion: false, // Disable expensive conversion
         },
-        // IMPROVED: Better error messages
-        disableErrorMessages: EnvConfig.isProduction(),
+        skipMissingProperties: false,
+        skipNullProperties: false,
+        skipUndefinedProperties: false,
       }),
     );
 

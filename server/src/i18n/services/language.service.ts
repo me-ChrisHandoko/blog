@@ -31,9 +31,9 @@ export class LanguageService implements OnModuleInit {
   private readonly translationsPath: string;
 
   // FIXED: Optimized cache with size limit
-  // private translationCache = new Map<string, string>();
-  // private readonly MAX_CACHE_SIZE = 1000; // Limit cache size to prevent memory leaks
-  private translationCache = new LRUCache<string, string>(1000);
+  private translationCache = new LRUCache<string, string>(500); // Reduce size
+  private fileStatsCache = new LRUCache<string, any>(10); // Add file stats cache
+  // private translationCache = new LRUCache<string, string>(1000);
 
   constructor() {
     this.translationsPath = path.join(
@@ -47,7 +47,25 @@ export class LanguageService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.loadTranslations();
+    await this.warmCache();
     this.logger.log('✅ File-based translations loaded successfully');
+  }
+
+  private async warmCache(): Promise<void> {
+    const commonKeys = [
+      'auth.messages.loginSuccess',
+      'auth.messages.invalidCredentials',
+      'validation.email.required',
+      'validation.password.required',
+      'common.messages.success',
+      'common.messages.error',
+    ];
+
+    this.getSupportedLanguages().forEach((lang) => {
+      commonKeys.forEach((key) => {
+        this.translate(key, lang); // Pre-populate cache
+      });
+    });
   }
 
   /**

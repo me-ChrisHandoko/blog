@@ -1,3 +1,4 @@
+// src/users/users.service.ts - FINAL FIXED VERSION
 import {
   Injectable,
   NotFoundException,
@@ -13,44 +14,21 @@ import {
   SupportedLanguage,
   getDefaultLanguage,
 } from '../i18n/constants/languages';
-import { User, Profile, Language } from '@prisma/client';
+import { User, Language } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
-// Type definitions untuk response - FIXED: Match Prisma types exactly
-type SafeUser = Omit<User, 'password'>;
-
-// Raw Prisma types from database
-type PrismaProfileTranslation = {
-  id: string;
-  createdAt: Date;
-  updatedAt: Date;
-  language: Language;
-  firstName: string;
-  lastName: string;
-  bio: string | null; // Prisma uses null, not undefined
-  profileId: string;
-};
-
-type PrismaProfileWithTranslations = Profile & {
-  translations: PrismaProfileTranslation[];
-};
-
-// Cleaned response types for API
-type CleanTranslation = {
-  language: Language;
-  firstName: string;
-  lastName: string;
-  bio?: string; // Convert null to undefined for API consistency
-};
-
-type ProfileWithTranslations = Omit<Profile, 'createdAt' | 'updatedAt'> & {
-  translations: CleanTranslation[];
-};
-
-type UserWithProfile = SafeUser & {
-  profile?: ProfileWithTranslations;
-  translation?: CleanTranslation;
-};
+// FIXED: Import clean types
+import {
+  SafeUser,
+  UserWithProfile,
+  CleanTranslation,
+  ProfileWithTranslations,
+  PrismaProfileWithTranslations,
+  PrismaProfileTranslation,
+  UserStats,
+  PaginatedResponse,
+  PaginationMeta,
+} from './types/user.types';
 
 @Injectable()
 export class UsersService extends MultilingualBaseService {
@@ -59,6 +37,32 @@ export class UsersService extends MultilingualBaseService {
     protected readonly languageService: LanguageService,
   ) {
     super(prisma, languageService);
+  }
+
+  /**
+   * FIXED: Helper method untuk konversi language dengan proper typing
+   */
+  private convertToLanguageEnum(supportedLang: SupportedLanguage): Language {
+    const langString = this.languageService.supportedToPrisma(supportedLang);
+    return langString as Language;
+  }
+
+  /**
+   * FIXED: Helper method untuk create SafeUser dari Prisma User
+   */
+  private createSafeUser(prismaUser: User): SafeUser {
+    return {
+      id: prismaUser.id,
+      email: prismaUser.email,
+      role: prismaUser.role,
+      isActive: prismaUser.isActive,
+      isVerified: prismaUser.isVerified,
+      lastLoginAt: prismaUser.lastLoginAt,
+      preferredLanguage: prismaUser.preferredLanguage,
+      createdAt: prismaUser.createdAt,
+      updatedAt: prismaUser.updatedAt,
+      deletedAt: prismaUser.deletedAt,
+    };
   }
 
   /**
@@ -86,22 +90,21 @@ export class UsersService extends MultilingualBaseService {
       saltRounds,
     );
 
-    // Convert language ke Prisma enum
+    // FIXED: Convert language dengan proper typing
     const preferredLanguage = createUserDto.preferredLanguage
-      ? this.languageService.supportedToPrisma(createUserDto.preferredLanguage)
-      : this.languageService.supportedToPrisma(getDefaultLanguage());
+      ? this.convertToLanguageEnum(createUserDto.preferredLanguage)
+      : this.convertToLanguageEnum(getDefaultLanguage());
 
     try {
       const user = await this.prisma.user.create({
         data: {
           email: createUserDto.email.toLowerCase().trim(),
           password: hashedPassword,
-          preferredLanguage: preferredLanguage as Language,
+          preferredLanguage: preferredLanguage,
         },
       });
 
-      // Return safe user without password
-      return this.cleanUser(user);
+      return this.createSafeUser(user);
     } catch (error) {
       throw new BadRequestException(
         this.getMessage('common.messages.error', lang),
@@ -144,10 +147,10 @@ export class UsersService extends MultilingualBaseService {
       saltRounds,
     );
 
-    // Convert language ke Prisma enum
+    // FIXED: Convert language dengan proper typing
     const preferredLanguage = createUserDto.preferredLanguage
-      ? this.languageService.supportedToPrisma(createUserDto.preferredLanguage)
-      : this.languageService.supportedToPrisma(getDefaultLanguage());
+      ? this.convertToLanguageEnum(createUserDto.preferredLanguage)
+      : this.convertToLanguageEnum(getDefaultLanguage());
 
     try {
       // Transaction untuk atomicity
@@ -157,7 +160,7 @@ export class UsersService extends MultilingualBaseService {
           data: {
             email: createUserDto.email.toLowerCase().trim(),
             password: hashedPassword,
-            preferredLanguage: preferredLanguage as Language,
+            preferredLanguage: preferredLanguage,
           },
         });
 
@@ -177,13 +180,13 @@ export class UsersService extends MultilingualBaseService {
         // 3. Create profile translations
         const translations = await Promise.all(
           createUserDto.profileTranslations.map(async (translation) => {
-            const prismaLanguage = this.languageService.supportedToPrisma(
+            const prismaLanguage = this.convertToLanguageEnum(
               translation.language,
             );
             return tx.profileTranslation.create({
               data: {
                 profileId: profile.id,
-                language: prismaLanguage as Language,
+                language: prismaLanguage,
                 firstName: translation.firstName,
                 lastName: translation.lastName,
                 bio: translation.bio,
@@ -196,7 +199,7 @@ export class UsersService extends MultilingualBaseService {
       });
 
       // Format response dengan proper type conversion
-      const safeUser = this.cleanUser(result.user);
+      const safeUser = this.createSafeUser(result.user);
       const cleanProfile = this.cleanProfile({
         ...result.profile,
         translations: result.translations,
@@ -244,8 +247,8 @@ export class UsersService extends MultilingualBaseService {
       );
     }
 
-    // Remove password dan clean up types
-    const safeUser = this.cleanUser(user);
+    // Create safe user
+    const safeUser = this.createSafeUser(user);
 
     // Format dengan translation yang sesuai
     if (user.profile) {
@@ -266,68 +269,121 @@ export class UsersService extends MultilingualBaseService {
   }
 
   /**
-   * Get all users dengan pagination dan language support
+   * OPTIMIZED: Get all users dengan pagination dan language support
    */
   async findAll(
     page: number = 1,
     limit: number = 10,
     lang: SupportedLanguage = getDefaultLanguage(),
-  ): Promise<{
-    data: UserWithProfile[];
-    meta: {
-      page: number;
-      limit: number;
-      total: number;
-      totalPages: number;
-    };
-  }> {
+  ): Promise<PaginatedResponse<UserWithProfile>> {
     const skip = (page - 1) * limit;
+    const currentLanguage = this.convertToLanguageEnum(lang);
 
-    const [users, total] = await Promise.all([
+    // OPTIMIZED: Single transaction with specific language translation
+    const [users, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({
         skip,
         take: limit,
-        include: {
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          isActive: true,
+          isVerified: true,
+          preferredLanguage: true,
+          createdAt: true,
+          updatedAt: true,
+          lastLoginAt: true,
+          deletedAt: true,
           profile: {
-            include: {
-              translations: true,
+            select: {
+              id: true,
+              avatar: true,
+              phone: true,
+              address: true,
+              birthday: true,
+              userId: true,
+              translations: {
+                where: {
+                  language: currentLanguage,
+                },
+                take: 1,
+              },
             },
           },
         },
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.user.count(),
+      this.prisma.user.count({ where: { deletedAt: null } }),
     ]);
 
-    // Format users dengan translations
-    const formattedUsers = users.map((user) => {
-      const safeUser = this.cleanUser(user);
+    // OPTIMIZED: Format users dengan single translation
+    const formattedUsers: UserWithProfile[] = users.map((user) => {
+      const safeUser: SafeUser = {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        isActive: user.isActive,
+        isVerified: user.isVerified,
+        preferredLanguage: user.preferredLanguage,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        lastLoginAt: user.lastLoginAt,
+        deletedAt: user.deletedAt,
+      };
 
       if (user.profile) {
-        const cleanProfile = this.cleanProfile(user.profile);
+        const translation = user.profile.translations[0];
+
         const userWithProfile: UserWithProfile = {
           ...safeUser,
-          profile: cleanProfile,
+          profile: {
+            id: user.profile.id,
+            avatar: user.profile.avatar,
+            phone: user.profile.phone,
+            address: user.profile.address,
+            birthday: user.profile.birthday,
+            userId: user.profile.userId,
+            translations: translation
+              ? [
+                  {
+                    language: translation.language,
+                    firstName: translation.firstName,
+                    lastName: translation.lastName,
+                    bio: translation.bio ?? undefined,
+                  },
+                ]
+              : [],
+          },
+          translation: translation
+            ? {
+                language: translation.language,
+                firstName: translation.firstName,
+                lastName: translation.lastName,
+                bio: translation.bio ?? undefined,
+              }
+            : undefined,
         };
 
-        return this.formatEntityWithTranslation(
-          userWithProfile,
-          cleanProfile.translations,
-          lang,
-        );
+        return userWithProfile;
       }
 
       return safeUser;
     });
 
+    const meta: PaginationMeta = {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasNext: page < Math.ceil(total / limit),
+      hasPrev: page > 1,
+    };
+
     return {
       data: formattedUsers,
-      meta: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      meta,
     };
   }
 
@@ -352,15 +408,15 @@ export class UsersService extends MultilingualBaseService {
       );
     }
 
-    const prismaLanguage = this.languageService.supportedToPrisma(language);
+    const prismaLanguage = this.convertToLanguageEnum(language);
 
     try {
-      // Upsert translation (update jika ada, create jika tidak ada)
+      // Upsert translation
       await this.prisma.profileTranslation.upsert({
         where: {
           profileId_language: {
             profileId: user.profile.id,
-            language: prismaLanguage as Language,
+            language: prismaLanguage,
           },
         },
         update: {
@@ -370,14 +426,13 @@ export class UsersService extends MultilingualBaseService {
         },
         create: {
           profileId: user.profile.id,
-          language: prismaLanguage as Language,
+          language: prismaLanguage,
           firstName: updateDto.firstName!,
           lastName: updateDto.lastName!,
           bio: updateDto.bio,
         },
       });
 
-      // Return updated user
       return this.findOne(userId, lang);
     } catch (error) {
       throw new BadRequestException(
@@ -408,15 +463,108 @@ export class UsersService extends MultilingualBaseService {
   }
 
   /**
-   * Helper method untuk mendapatkan pesan translation
+   * Get user statistics - OPTIMIZED query
+   */
+  async getUserStats(
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<UserStats> {
+    const [activeCount, verifiedCount, total] = await Promise.all([
+      this.prisma.user.count({
+        where: { isActive: true, deletedAt: null },
+      }),
+      this.prisma.user.count({
+        where: { isVerified: true, deletedAt: null },
+      }),
+      this.prisma.user.count({
+        where: { deletedAt: null },
+      }),
+    ]);
+
+    return {
+      total,
+      active: activeCount,
+      verified: verifiedCount,
+      inactive: total - activeCount,
+      unverified: total - verifiedCount,
+    };
+  }
+
+  /**
+   * Find users by language preference
+   */
+  async findByLanguagePreference(
+    language: SupportedLanguage,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<PaginatedResponse<SafeUser>> {
+    const skip = (page - 1) * limit;
+    const prismaLanguage = this.convertToLanguageEnum(language);
+
+    const [users, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where: {
+          preferredLanguage: prismaLanguage,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          isActive: true,
+          isVerified: true,
+          preferredLanguage: true,
+          createdAt: true,
+          updatedAt: true,
+          lastLoginAt: true,
+          deletedAt: true,
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.user.count({
+        where: {
+          preferredLanguage: prismaLanguage,
+          deletedAt: null,
+        },
+      }),
+    ]);
+
+    const safeUsers: SafeUser[] = users.map((user) => ({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+      isVerified: user.isVerified,
+      preferredLanguage: user.preferredLanguage,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      lastLoginAt: user.lastLoginAt,
+      deletedAt: user.deletedAt,
+    }));
+
+    const meta: PaginationMeta = {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasNext: page < Math.ceil(total / limit),
+      hasPrev: page > 1,
+    };
+
+    return {
+      data: safeUsers,
+      meta,
+    };
+  }
+
+  /**
+   * Helper methods
    */
   private getMessage(key: string, lang: SupportedLanguage): string {
     return this.languageService.translate(key, lang);
   }
 
-  /**
-   * Helper method untuk mengkonversi Prisma profile ke clean API format
-   */
   private cleanProfile(
     prismaProfile: PrismaProfileWithTranslations,
   ): ProfileWithTranslations {
@@ -425,7 +573,7 @@ export class UsersService extends MultilingualBaseService {
         language: translation.language,
         firstName: translation.firstName,
         lastName: translation.lastName,
-        bio: translation.bio ?? undefined, // Convert null to undefined
+        bio: translation.bio ?? undefined,
       }));
 
     return {
@@ -436,33 +584,6 @@ export class UsersService extends MultilingualBaseService {
       birthday: prismaProfile.birthday,
       userId: prismaProfile.userId,
       translations: cleanTranslations,
-    };
-  }
-
-  /**
-   * Helper method untuk mengkonversi Prisma user ke safe format
-   */
-  private cleanUser(prismaUser: User): SafeUser {
-    const { password, ...safeUser } = prismaUser;
-    return safeUser;
-  }
-
-  /**
-   * Get user statistics
-   */
-  async getUserStats(lang: SupportedLanguage = getDefaultLanguage()) {
-    const [total, active, verified] = await Promise.all([
-      this.prisma.user.count({ where: { deletedAt: null } }),
-      this.prisma.user.count({ where: { isActive: true, deletedAt: null } }),
-      this.prisma.user.count({ where: { isVerified: true, deletedAt: null } }),
-    ]);
-
-    return {
-      total,
-      active,
-      verified,
-      inactive: total - active,
-      unverified: total - verified,
     };
   }
 }

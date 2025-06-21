@@ -40,6 +40,12 @@ model User {
   createdBy String?
   updatedBy String?
 
+  @@index([email]) // Single column index
+  @@index([isActive, deletedAt]) // Untuk query user aktif
+  @@index([role, isActive]) // Untuk admin dashboard
+  @@index([createdAt]) // Untuk sorting by date
+  @@index([preferredLanguage]) // Untuk language grouping
+  @@index([lastLoginAt]) // Untuk analytics
   @@map("users") // Nama tabel di database
 }
 
@@ -61,6 +67,8 @@ model Profile {
   // Relation ke tranlation table
   translations ProfileTranslation[]
 
+  @@index([birthday]) // Age-based queries
+  @@index([createdAt]) // Profile creation date
   @@map("profiles")
 }
 
@@ -80,9 +88,11 @@ model ProfileTranslation {
   profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   // Constraint: satu profile hanya bisa punya satu translation per bahasa
-  @@unique([profileId, language])
-  @@index([language])
-  @@index([profileId, language])
+  @@unique([profileId, language]) // Sudah ada - bagus
+  @@index([language]) // Sudah ada - bagus
+  @@index([profileId, language]) // Sudah ada - bagus
+  @@index([firstName, lastName]) // Full name search
+  @@index([language, firstName]) // Name search per language
   @@map("profile_translations")
 }
 
@@ -101,6 +111,8 @@ model Category {
   posts        Post[]
   translations CategoryTranslation[]
 
+  @@index([isActive]) // Active categories
+  @@index([createdAt]) // Creation order
   @@map("categories")
 }
 
@@ -150,6 +162,14 @@ model Post {
   tags         PostTag[] // Many-to-many relationship
   translations PostTranslation[] // Multilingual content
 
+  @@index([status, publishedAt]) // Published posts lookup
+  @@index([authorId, status]) // Author's posts
+  @@index([categoryId, status]) // Category posts
+  @@index([publishedAt]) // Chronological sorting
+  @@index([views]) // Popular posts
+  @@index([likes]) // Most liked posts
+  @@index([createdAt]) // Recent posts
+  @@index([status, deletedAt]) // Active posts filter
   @@map("posts")
 }
 
@@ -177,10 +197,12 @@ model PostTranslation {
   post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   // Constraints
-  @@unique([postId, language]) // Satu post = satu translation per bahasa
-  @@unique([language, languageSlug]) // Slug unik per bahasa
-  @@index([language, languageSlug])
-  @@index([postId])
+  @@unique([postId, language]) // Sudah ada - bagus
+  @@unique([language, languageSlug]) // Sudah ada - bagus
+  @@index([language, languageSlug]) // Sudah ada - bagus
+  @@index([postId]) // Sudah ada - bagus
+  @@index([language, title]) // Title search per language
+  @@index([language]) // Language filtering
   @@map("post_translations")
 }
 
@@ -259,6 +281,12 @@ model Comment {
   parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
   replies Comment[] @relation("CommentReplies")
 
+  @@index([postId, isApproved]) // Approved comments per post
+  @@index([authorId]) // User's comments
+  @@index([parentId]) // Comment replies
+  @@index([isApproved, createdAt]) // Moderation queue
+  @@index([language]) // Comments per language
+  @@index([createdAt]) // Chronological order
   @@map("comments")
 }
 
@@ -279,6 +307,10 @@ model Session {
   // Relasi
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, isActive]) // User sessions lookup
+  @@index([expiresAt]) // Cleanup expired sessions
+  @@index([isActive, expiresAt]) // Active session validation
+  @@index([ipAddress]) // Security monitoring
   @@map("sessions")
 }
 
@@ -338,6 +370,11 @@ model AuditLog {
   // Timestamps
   createdAt DateTime @default(now())
 
+  @@index([userId, createdAt]) // User activity timeline
+  @@index([resource, resourceId]) // Resource change history
+  @@index([action, resource]) // Action type analysis
+  @@index([createdAt]) // Time-based queries
+  @@index([ipAddress]) // Security monitoring
   @@map("audit_logs")
 }
 

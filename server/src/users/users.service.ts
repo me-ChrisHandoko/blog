@@ -1,366 +1,162 @@
-// src/users/users.service.ts - FIXED TRANSLATION CALLS
-import {
-  Injectable,
-  NotFoundException,
-  ConflictException,
-  BadRequestException,
-} from '@nestjs/common';
-// ✅ Use composition instead of inheritance to avoid compatibility issues
-import { PrismaService } from '../database/prisma.service';
-import { EnhancedPrismaService } from '../database/enhanced-prisma.service';
-// ✅ FIXED: Import types from query optimizer
-import {
-  QueryOptimizerService,
-  UserSearchResult,
-  OffsetPaginatedResult,
-  UserStats,
-} from '../database/query-optimizer.service';
-import { LanguageService } from '../i18n/services/language.service';
-import { CreateUserDto, CreateUserWithProfileDto } from './dto/create-user.dto';
-import { UpdateProfileTranslationDto } from './dto/profile-translation.dto';
+// src/users/users.service.ts - CLEAN FACADE PATTERN
+import { Injectable } from '@nestjs/common';
 import {
   SupportedLanguage,
   getDefaultLanguage,
 } from '../i18n/constants/languages';
-import { User, Language } from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
 
-// ✅ Import clean types and utilities
+// Import specialized services
+import { UserService } from './services/user.service';
+import { ProfileService } from './services/profile.service';
+import {
+  UserAnalyticsService,
+  UserActivityAnalytics,
+  EnhancedUserStats,
+} from './services/user-analytics.service';
+import {
+  UserQueryService,
+  UserSearchFilters,
+  UserSearchOptions,
+} from './services/user-query.service';
+
+// Import DTOs and types
+import { CreateUserDto, CreateUserWithProfileDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateProfileTranslationDto } from './dto/profile-translation.dto';
 import {
   SafeUser,
   UserWithProfile,
-  CleanTranslation,
+  UserStats,
   PaginatedResponse,
 } from './types/user.types';
-import { UserMapper } from '../shared/mappers/user.mapper';
-import { LanguageConverter } from '../shared/utils/language-converter';
 
+/**
+ * Main Users Service - Facade Pattern
+ *
+ * This service acts as a single entry point for all user operations,
+ * delegating to specialized services for specific functionality.
+ */
 @Injectable()
 export class UsersService {
   constructor(
-    // ✅ COMPOSITION: Use both services without inheritance
-    private readonly basePrisma: PrismaService, // For compatibility with existing code
-    private readonly enhancedPrisma: EnhancedPrismaService, // For enhanced features
-    private readonly queryOptimizer: QueryOptimizerService,
-    private readonly languageService: LanguageService,
+    private readonly userService: UserService,
+    private readonly profileService: ProfileService,
+    private readonly analyticsService: UserAnalyticsService,
+    private readonly queryService: UserQueryService,
   ) {}
 
-  /**
-   * Helper method untuk format entity dengan translation
-   */
-  protected formatEntityWithTranslation<T extends object>(
-    entity: T,
-    translations: CleanTranslation[],
-    lang: SupportedLanguage,
-  ): T & { translation?: CleanTranslation } {
-    const currentLang = LanguageConverter.toPrismaLanguage(lang);
-    const translation = translations.find((t) => t.language === currentLang);
-
-    return {
-      ...entity,
-      ...(translation && { translation }),
-    };
-  }
+  // ==========================================
+  // BASIC USER OPERATIONS (Delegate to UserService)
+  // ==========================================
 
   /**
-   * Helper method untuk konversi language dengan proper typing
-   */
-  private convertToLanguageEnum(supportedLang: SupportedLanguage): Language {
-    return LanguageConverter.toPrismaLanguage(supportedLang);
-  }
-
-  /**
-   * Create user basic tanpa profile
+   * Create a basic user without profile
    */
   async create(
     createUserDto: CreateUserDto,
     lang: SupportedLanguage = getDefaultLanguage(),
   ): Promise<SafeUser> {
-    // Validasi email belum digunakan
-    const existingUser = await this.enhancedPrisma.user.findUnique({
-      where: { email: createUserDto.email },
-    });
-
-    if (existingUser) {
-      throw new ConflictException(
-        this.languageService.translate('users.messages.emailExists', lang),
-      );
-    }
-
-    // Hash password
-    const saltRounds = 12;
-    const hashedPassword = await bcrypt.hash(
-      createUserDto.password,
-      saltRounds,
-    );
-
-    // Convert language dengan proper typing
-    const preferredLanguage = createUserDto.preferredLanguage
-      ? this.convertToLanguageEnum(createUserDto.preferredLanguage)
-      : this.convertToLanguageEnum(getDefaultLanguage());
-
-    try {
-      // ✅ Use enhanced monitoring
-      const user = await this.enhancedPrisma.monitoredQuery(async () => {
-        return await this.enhancedPrisma.user.create({
-          data: {
-            email: createUserDto.email.toLowerCase().trim(),
-            password: hashedPassword,
-            preferredLanguage: preferredLanguage,
-          },
-        });
-      }, 'create-user');
-
-      return UserMapper.toSafeUser(user);
-    } catch (error) {
-      throw new BadRequestException(
-        this.languageService.translate('common.messages.error', lang),
-      );
-    }
+    return await this.userService.create(createUserDto, lang);
   }
 
   /**
-   * Create user dengan multilingual profile
-   */
-  async createWithProfile(
-    createUserDto: CreateUserWithProfileDto,
-    lang: SupportedLanguage = getDefaultLanguage(),
-  ): Promise<UserWithProfile> {
-    // Validasi email belum digunakan
-    const existingUser = await this.enhancedPrisma.user.findUnique({
-      where: { email: createUserDto.email },
-    });
-
-    if (existingUser) {
-      throw new ConflictException(
-        this.languageService.translate('users.messages.emailExists', lang),
-      );
-    }
-
-    // Validasi setidaknya ada satu translation
-    if (
-      !createUserDto.profileTranslations ||
-      createUserDto.profileTranslations.length === 0
-    ) {
-      throw new BadRequestException(
-        this.languageService.translate(
-          'users.messages.profileTranslationRequired',
-          lang,
-        ),
-      );
-    }
-
-    // Hash password
-    const saltRounds = 12;
-    const hashedPassword = await bcrypt.hash(
-      createUserDto.password,
-      saltRounds,
-    );
-
-    // Convert language dengan proper typing
-    const preferredLanguage = createUserDto.preferredLanguage
-      ? this.convertToLanguageEnum(createUserDto.preferredLanguage)
-      : this.convertToLanguageEnum(getDefaultLanguage());
-
-    try {
-      // ✅ Enhanced transaction dengan monitoring
-      const result = await this.enhancedPrisma.monitoredQuery(async () => {
-        return await this.enhancedPrisma.$transaction(async (tx) => {
-          // 1. Create user
-          const user = await tx.user.create({
-            data: {
-              email: createUserDto.email.toLowerCase().trim(),
-              password: hashedPassword,
-              preferredLanguage: preferredLanguage,
-            },
-          });
-
-          // 2. Create profile
-          const profile = await tx.profile.create({
-            data: {
-              userId: user.id,
-              avatar: createUserDto.avatar,
-              phone: createUserDto.phone,
-              address: createUserDto.address,
-              birthday: createUserDto.birthday
-                ? new Date(createUserDto.birthday)
-                : null,
-            },
-          });
-
-          // 3. Create profile translations
-          const translationData = createUserDto.profileTranslations.map(
-            (translation) => ({
-              profileId: profile.id,
-              language: this.convertToLanguageEnum(translation.language),
-              firstName: translation.firstName,
-              lastName: translation.lastName,
-              bio: translation.bio,
-            }),
-          );
-
-          const translations = await Promise.all(
-            translationData.map(async (data) =>
-              tx.profileTranslation.create({ data }),
-            ),
-          );
-
-          return { user, profile, translations };
-        });
-      }, 'create-user-with-profile');
-
-      // Format response dengan proper type conversion
-      const safeUser = UserMapper.toSafeUser(result.user);
-      const cleanProfile = UserMapper.toCleanProfile({
-        ...result.profile,
-        translations: result.translations,
-      });
-
-      const userWithProfile: UserWithProfile = {
-        ...safeUser,
-        profile: cleanProfile,
-      };
-
-      // Apply language-specific formatting
-      return this.formatEntityWithTranslation(
-        userWithProfile,
-        cleanProfile.translations,
-        lang,
-      );
-    } catch (error) {
-      throw new BadRequestException(
-        this.languageService.translate('common.messages.error', lang),
-      );
-    }
-  }
-
-  /**
-   * ✅ OPTIMIZED: Find user by ID dengan enhanced query
+   * Find user by ID
    */
   async findOne(
     id: string,
     lang: SupportedLanguage = getDefaultLanguage(),
   ): Promise<UserWithProfile> {
-    const user = await this.enhancedPrisma.monitoredQuery(async () => {
-      return await this.enhancedPrisma.user.findUnique({
-        where: { id },
-        include: {
-          profile: {
-            include: {
-              translations: true,
-            },
-          },
-        },
-      });
-    }, 'find-user-by-id');
-
-    if (!user) {
-      throw new NotFoundException(
-        this.languageService.translate('users.messages.notFound', lang),
-      );
+    // Try to get user with profile first
+    try {
+      return await this.profileService.getUserWithProfile(id, lang);
+    } catch (error) {
+      // Fallback to basic user if profile not found
+      const user = await this.userService.findById(id, lang);
+      return user as UserWithProfile;
     }
-
-    // Create safe user
-    const safeUser = UserMapper.toSafeUser(user);
-
-    // Format dengan translation yang sesuai
-    if (user.profile) {
-      const cleanProfile = UserMapper.toCleanProfile(user.profile);
-      const userWithProfile: UserWithProfile = {
-        ...safeUser,
-        profile: cleanProfile,
-      };
-
-      return this.formatEntityWithTranslation(
-        userWithProfile,
-        cleanProfile.translations,
-        lang,
-      );
-    }
-
-    return safeUser;
   }
 
   /**
-   * ✅ OPTIMIZED: Get all users dengan query optimizer
+   * Find user by email
    */
-  async findAll(
-    page: number = 1,
-    limit: number = 10,
+  async findByEmail(
+    email: string,
     lang: SupportedLanguage = getDefaultLanguage(),
-  ): Promise<PaginatedResponse<UserWithProfile>> {
-    const currentLanguage = LanguageConverter.toPrismaLanguage(lang);
-
-    // ✅ Use query optimizer untuk better performance
-    const result = await this.queryOptimizer.findUsersWithOffsetPagination({
-      page,
-      limit,
-      lang: currentLanguage,
-    });
-
-    // Format response
-    const formattedUsers: UserWithProfile[] = result.data.map((user: any) => {
-      const safeUser = UserMapper.toSafeUser(user);
-
-      if (user.profile) {
-        const translation = user.profile.translations[0];
-        return {
-          ...safeUser,
-          profile: {
-            id: user.profile.id,
-            avatar: user.profile.avatar,
-            phone: user.profile.phone,
-            address: user.profile.address,
-            birthday: user.profile.birthday,
-            userId: user.profile.userId,
-            translations: translation ? [translation] : [],
-          },
-          translation: translation || undefined,
-        };
-      }
-
-      return safeUser;
-    });
-
-    return {
-      data: formattedUsers,
-      meta: {
-        page: result.page,
-        limit: result.limit,
-        total: result.total,
-        totalPages: result.totalPages,
-        hasNext: result.hasNext,
-        hasPrev: result.hasPrev,
-      },
-    };
+  ): Promise<SafeUser> {
+    return await this.userService.findByEmail(email, lang);
   }
 
   /**
-   * ✅ OPTIMIZED: User search dengan query optimizer - FIXED RETURN TYPE
+   * Update user basic information
    */
-  async searchUsers({
-    query,
-    page = 1,
-    limit = 10,
-    lang = getDefaultLanguage(),
-  }: {
-    query: string;
-    page?: number;
-    limit?: number;
-    lang?: SupportedLanguage;
-  }): Promise<UserSearchResult> {
-    const currentLanguage = LanguageConverter.toPrismaLanguage(lang);
-
-    return await this.queryOptimizer.searchUsersOptimized({
-      query,
-      page,
-      limit,
-      lang: currentLanguage,
-    });
+  async update(
+    id: string,
+    updateUserDto: UpdateUserDto,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<SafeUser> {
+    return await this.userService.update(id, updateUserDto, lang);
   }
 
   /**
-   * Update profile translation untuk bahasa tertentu
+   * Soft delete user
+   */
+  async remove(
+    id: string,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<void> {
+    return await this.userService.softDelete(id, lang);
+  }
+
+  /**
+   * Restore soft deleted user
+   */
+  async restore(
+    id: string,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<SafeUser> {
+    return await this.userService.restore(id, lang);
+  }
+
+  /**
+   * Update user's last login timestamp
+   */
+  async updateLastLogin(id: string): Promise<void> {
+    return await this.userService.updateLastLogin(id);
+  }
+
+  /**
+   * Check if user exists
+   */
+  async exists(id: string): Promise<boolean> {
+    return await this.userService.exists(id);
+  }
+
+  // ==========================================
+  // PROFILE OPERATIONS (Delegate to ProfileService)
+  // ==========================================
+
+  /**
+   * Create user with multilingual profile
+   */
+  async createWithProfile(
+    createUserDto: CreateUserWithProfileDto,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<UserWithProfile> {
+    return await this.profileService.createUserWithProfile(createUserDto, lang);
+  }
+
+  /**
+   * Get user with profile and translations
+   */
+  async getUserWithProfile(
+    userId: string,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<UserWithProfile> {
+    return await this.profileService.getUserWithProfile(userId, lang);
+  }
+
+  /**
+   * Update profile translation for specific language
    */
   async updateProfileTranslation(
     userId: string,
@@ -368,269 +164,104 @@ export class UsersService {
     updateDto: UpdateProfileTranslationDto,
     lang: SupportedLanguage = getDefaultLanguage(),
   ): Promise<UserWithProfile> {
-    // Cek user dan profile exist
-    const user = await this.enhancedPrisma.user.findUnique({
-      where: { id: userId },
-      include: { profile: true },
-    });
-
-    if (!user || !user.profile) {
-      throw new NotFoundException(
-        this.languageService.translate('users.messages.profileNotFound', lang),
-      );
-    }
-
-    const prismaLanguage = this.convertToLanguageEnum(language);
-
-    try {
-      // ✅ Enhanced upsert dengan monitoring
-      await this.enhancedPrisma.monitoredQuery(async () => {
-        return await this.enhancedPrisma.profileTranslation.upsert({
-          where: {
-            profileId_language: {
-              profileId: user.profile!.id,
-              language: prismaLanguage,
-            },
-          },
-          update: {
-            firstName: updateDto.firstName,
-            lastName: updateDto.lastName,
-            bio: updateDto.bio,
-          },
-          create: {
-            profileId: user.profile!.id,
-            language: prismaLanguage,
-            firstName: updateDto.firstName!,
-            lastName: updateDto.lastName!,
-            bio: updateDto.bio,
-          },
-        });
-      }, 'update-profile-translation');
-
-      return this.findOne(userId, lang);
-    } catch (error) {
-      throw new BadRequestException(
-        this.languageService.translate('common.messages.error', lang),
-      );
-    }
+    return await this.profileService.updateProfileTranslation(
+      userId,
+      language,
+      updateDto,
+      lang,
+    );
   }
 
   /**
-   * Delete user (soft delete)
+   * Delete profile translation for specific language
    */
-  async remove(
-    id: string,
+  async deleteProfileTranslation(
+    userId: string,
+    language: SupportedLanguage,
     lang: SupportedLanguage = getDefaultLanguage(),
   ): Promise<void> {
-    const user = await this.enhancedPrisma.user.findUnique({ where: { id } });
-
-    if (!user) {
-      throw new NotFoundException(
-        this.languageService.translate('users.messages.notFound', lang),
-      );
-    }
-
-    // ✅ Enhanced soft delete dengan monitoring
-    await this.enhancedPrisma.monitoredQuery(async () => {
-      return await this.enhancedPrisma.user.update({
-        where: { id },
-        data: { deletedAt: new Date() },
-      });
-    }, 'soft-delete-user');
-  }
-
-  /**
-   * ✅ OPTIMIZED: Get user statistics dengan caching
-   */
-  async getUserStats(
-    lang: SupportedLanguage = getDefaultLanguage(),
-  ): Promise<UserStats> {
-    return await this.queryOptimizer.getUserStatsCached();
-  }
-
-  /**
-   * ✅ NEW: Get user activity analytics
-   */
-  async getUserActivityAnalytics(): Promise<{
-    recentlyActive: number;
-    totalActive: number;
-    newUsersThisMonth: number;
-    topLanguages: Array<{ language: string; count: number }>;
-  }> {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-
-    // ✅ Enhanced analytics dengan monitoring
-    return await this.enhancedPrisma.monitoredQuery(async () => {
-      const [recentlyActive, totalActive, newUsersThisMonth, languageStats] =
-        await Promise.all([
-          this.enhancedPrisma.user.count({
-            where: {
-              lastLoginAt: { gte: thirtyDaysAgo },
-              deletedAt: null,
-            },
-          }),
-          this.enhancedPrisma.user.count({
-            where: {
-              isActive: true,
-              deletedAt: null,
-            },
-          }),
-          this.enhancedPrisma.user.count({
-            where: {
-              createdAt: { gte: oneMonthAgo },
-              deletedAt: null,
-            },
-          }),
-          this.enhancedPrisma.user.groupBy({
-            by: ['preferredLanguage'],
-            where: { deletedAt: null },
-            _count: true,
-            orderBy: { _count: { preferredLanguage: 'desc' } },
-            take: 5,
-          }),
-        ]);
-
-      const topLanguages = languageStats.map((stat) => ({
-        language: stat.preferredLanguage,
-        count: stat._count,
-      }));
-
-      return {
-        recentlyActive,
-        totalActive,
-        newUsersThisMonth,
-        topLanguages,
-      };
-    }, 'user-activity-analytics');
-  }
-
-  /**
-   * ✅ NEW: Get performance metrics for users service
-   */
-  async getPerformanceMetrics(): Promise<{
-    queryStats: any;
-    databaseHealth: any;
-    recommendations: string[];
-  }> {
-    const [queryStats, health] = await Promise.all([
-      this.enhancedPrisma.getQueryStats(),
-      this.enhancedPrisma.healthCheck(),
-    ]);
-
-    const recommendations: string[] = [];
-
-    if (queryStats.averageQueryTime > 500) {
-      recommendations.push('Consider adding database indices for user queries');
-    }
-
-    if (parseFloat(queryStats.slowQueryRatio) > 10) {
-      recommendations.push(
-        'High slow query ratio detected - review user service queries',
-      );
-    }
-
-    if (!health.healthy) {
-      recommendations.push('Database connectivity issues detected');
-    }
-
-    if (recommendations.length === 0) {
-      recommendations.push('User service performance is optimal');
-    }
-
-    return {
-      queryStats,
-      databaseHealth: health,
-      recommendations,
-    };
-  }
-
-  /**
-   * ✅ NEW: Enhanced user statistics dengan role breakdown
-   */
-  async getEnhancedUserStats(): Promise<
-    UserStats & {
-      roleBreakdown: Array<{ role: string; count: number }>;
-      languageBreakdown: Array<{ language: string; count: number }>;
-      verificationStats: {
-        verified: number;
-        unverified: number;
-        verificationRate: string;
-      };
-      activityStats: {
-        active: number;
-        inactive: number;
-        recentlyActive: number;
-        activityRate: string;
-      };
-    }
-  > {
-    const basicStats = await this.getUserStats();
-
-    // ✅ Get additional statistics dengan monitoring
-    const additionalStats = await this.enhancedPrisma.monitoredQuery(
-      async () => {
-        const [roleStats, languageStats] = await Promise.all([
-          this.enhancedPrisma.user.groupBy({
-            by: ['role'],
-            where: { deletedAt: null },
-            _count: true,
-            orderBy: { _count: { role: 'desc' } },
-          }),
-          this.enhancedPrisma.user.groupBy({
-            by: ['preferredLanguage'],
-            where: { deletedAt: null },
-            _count: true,
-            orderBy: { _count: { preferredLanguage: 'desc' } },
-          }),
-        ]);
-
-        return { roleStats, languageStats };
-      },
-      'enhanced-user-statistics',
+    return await this.profileService.deleteProfileTranslation(
+      userId,
+      language,
+      lang,
     );
+  }
 
-    const roleBreakdown = additionalStats.roleStats.map((stat) => ({
-      role: stat.role,
-      count: stat._count,
-    }));
+  // ==========================================
+  // QUERY & SEARCH OPERATIONS (Delegate to QueryService)
+  // ==========================================
 
-    const languageBreakdown = additionalStats.languageStats.map((stat) => ({
-      language: stat.preferredLanguage,
-      count: stat._count,
-    }));
-
-    const verificationRate =
-      basicStats.total > 0
-        ? ((basicStats.verified / basicStats.total) * 100).toFixed(2) + '%'
-        : '0%';
-
-    const activityRate =
-      basicStats.total > 0
-        ? ((basicStats.active / basicStats.total) * 100).toFixed(2) + '%'
-        : '0%';
-
-    return {
-      ...basicStats,
-      roleBreakdown,
-      languageBreakdown,
-      verificationStats: {
-        verified: basicStats.verified,
-        unverified: basicStats.unverified,
-        verificationRate,
-      },
-      activityStats: {
-        active: basicStats.active,
-        inactive: basicStats.inactive,
-        recentlyActive: basicStats.recentlyActive,
-        activityRate,
-      },
-    };
+  /**
+   * Get paginated list of all users
+   */
+  async findAll(
+    page: number = 1,
+    limit: number = 10,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<PaginatedResponse<UserWithProfile>> {
+    return (await this.queryService.findUsers({
+      page,
+      limit,
+      options: { includeProfile: true },
+      lang,
+    })) as PaginatedResponse<UserWithProfile>;
   }
 
   /**
-   * ✅ NEW: Find users by role dengan pagination
+   * Get paginated list of users with advanced filtering
+   */
+  async findUsers({
+    page = 1,
+    limit = 10,
+    filters = {},
+    options = {},
+    lang = getDefaultLanguage(),
+  }: {
+    page?: number;
+    limit?: number;
+    filters?: UserSearchFilters;
+    options?: UserSearchOptions;
+    lang?: SupportedLanguage;
+  }): Promise<PaginatedResponse<UserWithProfile | SafeUser>> {
+    return await this.queryService.findUsers({
+      page,
+      limit,
+      filters,
+      options,
+      lang,
+    });
+  }
+
+  /**
+   * Search users by text query
+   */
+  async searchUsers({
+    query,
+    page = 1,
+    limit = 10,
+    filters = {},
+    options = { includeProfile: true },
+    lang = getDefaultLanguage(),
+  }: {
+    query: string;
+    page?: number;
+    limit?: number;
+    filters?: UserSearchFilters;
+    options?: UserSearchOptions;
+    lang?: SupportedLanguage;
+  }): Promise<PaginatedResponse<UserWithProfile | SafeUser>> {
+    return await this.queryService.searchUsers({
+      query,
+      page,
+      limit,
+      filters,
+      options,
+      lang,
+    });
+  }
+
+  /**
+   * Get users by role with pagination
    */
   async findUsersByRole(
     role: 'USER' | 'MODERATOR' | 'ADMIN' | 'SUPER_ADMIN',
@@ -638,34 +269,80 @@ export class UsersService {
     limit: number = 10,
     lang: SupportedLanguage = getDefaultLanguage(),
   ): Promise<PaginatedResponse<SafeUser>> {
-    const result = await this.queryOptimizer.findUsersWithOffsetPagination({
-      page,
-      limit,
-      lang: LanguageConverter.toPrismaLanguage(lang),
-      filters: {
-        role: role,
-      },
-    });
+    return await this.queryService.findUsersByRole(role, page, limit, lang);
+  }
 
-    const safeUsers: SafeUser[] = result.data.map((user: any) =>
-      UserMapper.toSafeUser(user),
-    );
+  // ==========================================
+  // ANALYTICS & STATISTICS (Delegate to AnalyticsService)
+  // ==========================================
 
-    return {
-      data: safeUsers,
-      meta: {
-        page: result.page,
-        limit: result.limit,
-        total: result.total,
-        totalPages: result.totalPages,
-        hasNext: result.hasNext,
-        hasPrev: result.hasPrev,
-      },
-    };
+  /**
+   * Get basic user statistics
+   */
+  async getUserStats(
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<UserStats> {
+    return await this.analyticsService.getUserStats();
   }
 
   /**
-   * ✅ NEW: Bulk operations untuk multiple users - FIXED TYPE HANDLING
+   * Get enhanced user statistics with detailed breakdowns
+   */
+  async getEnhancedUserStats(): Promise<EnhancedUserStats> {
+    return await this.analyticsService.getEnhancedUserStats();
+  }
+
+  /**
+   * Get user activity analytics
+   */
+  async getUserActivityAnalytics(): Promise<UserActivityAnalytics> {
+    return await this.analyticsService.getUserActivityAnalytics();
+  }
+
+  /**
+   * Get user growth analytics (by month)
+   */
+  async getUserGrowthAnalytics(months: number = 12): Promise<
+    Array<{
+      month: string;
+      newUsers: number;
+      totalUsers: number;
+      activeUsers: number;
+    }>
+  > {
+    return await this.analyticsService.getUserGrowthAnalytics(months);
+  }
+
+  /**
+   * Get user retention analytics
+   */
+  async getUserRetentionAnalytics(): Promise<{
+    day1: number;
+    day7: number;
+    day30: number;
+    cohortAnalysis: Array<{
+      cohort: string;
+      day1Retention: number;
+      day7Retention: number;
+      day30Retention: number;
+    }>;
+  }> {
+    return await this.analyticsService.getUserRetentionAnalytics();
+  }
+
+  /**
+   * Clear analytics cache
+   */
+  clearAnalyticsCache(): void {
+    this.analyticsService.clearAnalyticsCache();
+  }
+
+  // ==========================================
+  // BULK OPERATIONS
+  // ==========================================
+
+  /**
+   * Bulk update multiple users
    */
   async bulkUpdateUsers(
     updates: Array<{
@@ -687,34 +364,14 @@ export class UsersService {
       errors: [] as Array<{ userId: string; error: string }>,
     };
 
-    // ✅ Process in chunks untuk better performance
+    // Process in smaller chunks for better performance
     const chunkSize = 10;
     for (let i = 0; i < updates.length; i += chunkSize) {
       const chunk = updates.slice(i, i + chunkSize);
 
       const promises = chunk.map(async (update) => {
         try {
-          // ✅ FIXED: Proper type conversion for role
-          const updateData: any = {
-            ...(update.data.isActive !== undefined && {
-              isActive: update.data.isActive,
-            }),
-            ...(update.data.isVerified !== undefined && {
-              isVerified: update.data.isVerified,
-            }),
-          };
-
-          // ✅ Convert string role to Role enum if provided
-          if (update.data.role) {
-            updateData.role = update.data.role as any; // Prisma will validate enum
-          }
-
-          await this.enhancedPrisma.monitoredQuery(async () => {
-            return await this.enhancedPrisma.user.update({
-              where: { id: update.userId },
-              data: updateData,
-            });
-          }, 'bulk-update-user');
+          await this.userService.update(update.userId, update.data);
           results.updated++;
         } catch (error) {
           results.failed++;
@@ -729,5 +386,449 @@ export class UsersService {
     }
 
     return results;
+  }
+
+  /**
+   * Get total user count
+   */
+  async count(includeDeleted: boolean = false): Promise<number> {
+    return await this.userService.count(includeDeleted);
+  }
+
+  // ==========================================
+  // SERVICE HEALTH & DIAGNOSTICS
+  // ==========================================
+
+  /**
+   * Get service performance metrics
+   */
+  async getServiceMetrics(): Promise<{
+    userOperations: any;
+    profileOperations: any;
+    queryOperations: any;
+    analyticsOperations: any;
+    recommendations: string[];
+  }> {
+    // This would typically gather metrics from each service
+    // For now, we'll return a basic structure
+    const recommendations: string[] = [];
+
+    // Add performance recommendations based on service usage
+    recommendations.push(
+      'Consider implementing Redis caching for frequently accessed user data',
+    );
+    recommendations.push(
+      'Monitor slow query performance in user search operations',
+    );
+    recommendations.push(
+      'Implement user data archiving for old inactive accounts',
+    );
+
+    return {
+      userOperations: {
+        totalOperations: 'tracked_by_monitoring',
+        averageResponseTime: 'tracked_by_monitoring',
+      },
+      profileOperations: {
+        totalOperations: 'tracked_by_monitoring',
+        averageResponseTime: 'tracked_by_monitoring',
+      },
+      queryOperations: {
+        totalOperations: 'tracked_by_monitoring',
+        averageResponseTime: 'tracked_by_monitoring',
+      },
+      analyticsOperations: {
+        totalOperations: 'tracked_by_monitoring',
+        averageResponseTime: 'tracked_by_monitoring',
+      },
+      recommendations,
+    };
+  }
+
+  /**
+   * Validate service health
+   */
+  async validateServiceHealth(): Promise<{
+    healthy: boolean;
+    services: {
+      userService: boolean;
+      profileService: boolean;
+      queryService: boolean;
+      analyticsService: boolean;
+    };
+    issues: string[];
+  }> {
+    const issues: string[] = [];
+    const services = {
+      userService: true,
+      profileService: true,
+      queryService: true,
+      analyticsService: true,
+    };
+
+    try {
+      // Test basic user operations
+      await this.userService.count();
+    } catch (error) {
+      services.userService = false;
+      issues.push('UserService: Database connection issues');
+    }
+
+    try {
+      // Test analytics operations
+      await this.analyticsService.getUserStats();
+    } catch (error) {
+      services.analyticsService = false;
+      issues.push('AnalyticsService: Cache or database issues');
+    }
+
+    const healthy = Object.values(services).every((service) => service);
+
+    return {
+      healthy,
+      services,
+      issues: issues.length > 0 ? issues : ['All services operational'],
+    };
+  }
+}
+
+// src/users/services/user-bulk.service.ts - BULK OPERATIONS SERVICE
+import { Injectable, Logger } from '@nestjs/common';
+import { EnhancedDatabaseService } from '../../database/enhanced-database.service';
+import { LanguageService } from '../../i18n/services/language.service';
+import {
+  SupportedLanguage,
+  getDefaultLanguage,
+} from '../../i18n/constants/languages';
+import { UpdateProfileTranslationDto } from '../dto/profile-translation.dto';
+import { LanguageConverter } from '../../shared/utils/language-converter';
+
+export interface BulkOperationResult {
+  successful: number;
+  failed: number;
+  errors: Array<{
+    id: string;
+    error: string;
+  }>;
+}
+
+@Injectable()
+export class UserBulkService {
+  private readonly logger = new Logger(UserBulkService.name);
+
+  constructor(
+    private readonly database: EnhancedDatabaseService,
+    private readonly languageService: LanguageService,
+  ) {}
+
+  /**
+   * Bulk create profile translations
+   */
+  async bulkCreateProfileTranslations(
+    translations: Array<{
+      profileId: string;
+      language: SupportedLanguage;
+      firstName: string;
+      lastName: string;
+      bio?: string;
+    }>,
+  ): Promise<BulkOperationResult> {
+    const result: BulkOperationResult = {
+      successful: 0,
+      failed: 0,
+      errors: [],
+    };
+
+    if (translations.length === 0) {
+      return result;
+    }
+
+    // Validate and convert data
+    const validTranslations = translations
+      .filter((t) => t.profileId && t.language && t.firstName && t.lastName)
+      .map((t) => ({
+        ...t,
+        language: LanguageConverter.toPrismaLanguage(t.language),
+      }));
+
+    if (validTranslations.length !== translations.length) {
+      const invalidCount = translations.length - validTranslations.length;
+      this.logger.warn(`Filtered out ${invalidCount} invalid translations`);
+    }
+
+    try {
+      // Use enhanced bulk upsert
+      await this.database.bulkUpsert('profileTranslation', validTranslations, [
+        'profileId',
+        'language',
+      ]);
+
+      result.successful = validTranslations.length;
+
+      this.logger.log(
+        `✅ Bulk created ${result.successful} profile translations`,
+      );
+    } catch (error) {
+      this.logger.error('Bulk translation creation failed:', error);
+
+      // Fallback to individual operations
+      return await this.fallbackBulkCreateTranslations(validTranslations);
+    }
+
+    return result;
+  }
+
+  /**
+   * Bulk update user statuses
+   */
+  async bulkUpdateUserStatuses(
+    updates: Array<{
+      userId: string;
+      isActive?: boolean;
+      isVerified?: boolean;
+    }>,
+  ): Promise<BulkOperationResult> {
+    const result: BulkOperationResult = {
+      successful: 0,
+      failed: 0,
+      errors: [],
+    };
+
+    const chunkSize = 20;
+
+    for (let i = 0; i < updates.length; i += chunkSize) {
+      const chunk = updates.slice(i, i + chunkSize);
+
+      const promises = chunk.map(async (update) => {
+        try {
+          await this.database.monitoredQuery(async () => {
+            return await this.database.user.update({
+              where: { id: update.userId },
+              data: {
+                ...(update.isActive !== undefined && {
+                  isActive: update.isActive,
+                }),
+                ...(update.isVerified !== undefined && {
+                  isVerified: update.isVerified,
+                }),
+              },
+            });
+          }, 'bulk-update-user-status');
+
+          result.successful++;
+        } catch (error) {
+          result.failed++;
+          result.errors.push({
+            id: update.userId,
+            error: error.message,
+          });
+        }
+      });
+
+      await Promise.allSettled(promises);
+    }
+
+    this.logger.log(
+      `✅ Bulk updated ${result.successful} users, ${result.failed} failed`,
+    );
+
+    return result;
+  }
+
+  /**
+   * Bulk soft delete users
+   */
+  async bulkSoftDeleteUsers(userIds: string[]): Promise<BulkOperationResult> {
+    const result: BulkOperationResult = {
+      successful: 0,
+      failed: 0,
+      errors: [],
+    };
+
+    try {
+      const updateResult = await this.database.monitoredQuery(async () => {
+        return await this.database.user.updateMany({
+          where: {
+            id: { in: userIds },
+            deletedAt: null, // Only delete non-deleted users
+          },
+          data: {
+            deletedAt: new Date(),
+            isActive: false,
+          },
+        });
+      }, 'bulk-soft-delete-users');
+
+      result.successful = updateResult.count;
+
+      this.logger.log(`✅ Bulk soft deleted ${result.successful} users`);
+    } catch (error) {
+      this.logger.error('Bulk soft delete failed:', error);
+      result.failed = userIds.length;
+      result.errors.push({
+        id: 'bulk_operation',
+        error: error.message,
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Bulk restore users
+   */
+  async bulkRestoreUsers(userIds: string[]): Promise<BulkOperationResult> {
+    const result: BulkOperationResult = {
+      successful: 0,
+      failed: 0,
+      errors: [],
+    };
+
+    try {
+      const updateResult = await this.database.monitoredQuery(async () => {
+        return await this.database.user.updateMany({
+          where: {
+            id: { in: userIds },
+            deletedAt: { not: null }, // Only restore deleted users
+          },
+          data: {
+            deletedAt: null,
+            isActive: true,
+          },
+        });
+      }, 'bulk-restore-users');
+
+      result.successful = updateResult.count;
+
+      this.logger.log(`✅ Bulk restored ${result.successful} users`);
+    } catch (error) {
+      this.logger.error('Bulk restore failed:', error);
+      result.failed = userIds.length;
+      result.errors.push({
+        id: 'bulk_operation',
+        error: error.message,
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Export users data for backup/migration
+   */
+  async exportUsersData(
+    userIds?: string[],
+    includeProfiles: boolean = true,
+  ): Promise<{
+    users: any[];
+    profiles: any[];
+    translations: any[];
+    exportedAt: string;
+    totalRecords: number;
+  }> {
+    const whereClause = userIds ? { id: { in: userIds } } : {};
+
+    const [users, profiles, translations] = await Promise.all([
+      this.database.monitoredQuery(async () => {
+        return await this.database.user.findMany({
+          where: whereClause,
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            isActive: true,
+            isVerified: true,
+            preferredLanguage: true,
+            createdAt: true,
+            updatedAt: true,
+            deletedAt: true,
+            lastLoginAt: true,
+          },
+        });
+      }, 'export-users-data'),
+
+      includeProfiles
+        ? this.database.monitoredQuery(async () => {
+            return await this.database.profile.findMany({
+              where: userIds ? { userId: { in: userIds } } : {},
+            });
+          }, 'export-profiles-data')
+        : [],
+
+      includeProfiles
+        ? this.database.monitoredQuery(async () => {
+            return await this.database.profileTranslation.findMany({
+              where: userIds
+                ? {
+                    profile: { userId: { in: userIds } },
+                  }
+                : {},
+            });
+          }, 'export-translations-data')
+        : [],
+    ]);
+
+    const totalRecords =
+      users.length + (profiles?.length || 0) + (translations?.length || 0);
+
+    this.logger.log(
+      `📊 Exported ${totalRecords} records for ${users.length} users`,
+    );
+
+    return {
+      users,
+      profiles: profiles || [],
+      translations: translations || [],
+      exportedAt: new Date().toISOString(),
+      totalRecords,
+    };
+  }
+
+  // ==========================================
+  // PRIVATE HELPER METHODS
+  // ==========================================
+
+  /**
+   * Fallback method for bulk translation creation
+   */
+  private async fallbackBulkCreateTranslations(
+    translations: any[],
+  ): Promise<BulkOperationResult> {
+    const result: BulkOperationResult = {
+      successful: 0,
+      failed: 0,
+      errors: [],
+    };
+
+    for (const translation of translations) {
+      try {
+        await this.database.monitoredQuery(async () => {
+          return await this.database.profileTranslation.upsert({
+            where: {
+              profileId_language: {
+                profileId: translation.profileId,
+                language: translation.language,
+              },
+            },
+            update: {
+              firstName: translation.firstName,
+              lastName: translation.lastName,
+              bio: translation.bio,
+            },
+            create: translation,
+          });
+        }, 'fallback-create-translation');
+
+        result.successful++;
+      } catch (error) {
+        result.failed++;
+        result.errors.push({
+          id: translation.profileId,
+          error: error.message,
+        });
+      }
+    }
+
+    return result;
   }
 }

@@ -1,24 +1,26 @@
-// src/app.module.ts - KEY UPDATES
+// src/app.module.ts
 import { Module, Type, OnModuleInit } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AppI18nModule } from './i18n/i18n.module';
-import { UsersModule } from './users/users.module';
-import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
+
+// Import services using barrel exports
+import { EnhancedDatabaseService } from './database';
+import { LanguageService } from './i18n';
+
 import {
   envValidationSchema,
   EnvironmentVariables,
 } from './config/env.validation';
-
-// ✅ Import enhanced database services
-import { EnhancedPrismaService } from './database/enhanced-prisma.service';
-import { QueryOptimizerService } from './database/query-optimizer.service';
-import { PrismaService } from './database/prisma.service';
 
 function getConditionalModules(): Type<any>[] {
   const modules: Type<any>[] = [];
@@ -38,7 +40,6 @@ function getConditionalModules(): Type<any>[] {
 
 @Module({
   imports: [
-    // ConfigModule with validation schema
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
@@ -49,11 +50,7 @@ function getConditionalModules(): Type<any>[] {
       },
       expandVariables: true,
     }),
-
-    // ScheduleModule for task scheduling (@Cron decorators)
     ScheduleModule.forRoot(),
-
-    // ThrottlerModule with env vars
     ThrottlerModule.forRootAsync({
       useFactory: () => [
         {
@@ -62,51 +59,48 @@ function getConditionalModules(): Type<any>[] {
         },
       ],
     }),
-
     DatabaseModule,
-    HealthModule,
     AppI18nModule,
+    HealthModule,
     AuthModule,
     UsersModule,
     ...getConditionalModules(),
   ],
   controllers: [AppController],
-  providers: [
-    AppService,
-    // ✅ UPDATED: Provide enhanced database services globally
-    {
-      provide: PrismaService,
-      useClass: EnhancedPrismaService,
-    },
-    EnhancedPrismaService,
-    QueryOptimizerService,
-  ],
-  // ✅ Export enhanced services for other modules
-  exports: [EnhancedPrismaService, QueryOptimizerService],
+  providers: [AppService],
+  exports: [],
 })
 export class AppModule implements OnModuleInit {
   constructor(
     private configService: ConfigService<EnvironmentVariables>,
-    private enhancedPrisma: EnhancedPrismaService, // ✅ Use enhanced service
+    private enhancedDatabase: EnhancedDatabaseService,
+    private languageService: LanguageService,
   ) {}
 
-  onModuleInit() {
+  async onModuleInit() {
     const env = process.env.NODE_ENV || 'development';
-    const port = process.env.PORT || 3001;
-
     console.log(`🏗️  AppModule initialized in ${env} mode`);
     console.log(`📦 All modules loaded successfully`);
-    console.log(`🚀 Enhanced database services activated`);
 
-    // Only log basic info here since detailed logging happens in main.ts
+    await this.validateServicesHealth();
+
     if (env === 'development') {
-      console.log('📋 Development features enabled:');
-      console.log('   - Enhanced error messages');
-      console.log('   - Test endpoints');
-      console.log('   - Detailed logging');
-      console.log('   - Scheduled task monitoring');
-      console.log('   - Query performance monitoring');
-      console.log('   - Database connection pooling');
+      console.log('📋 Development features enabled');
+    }
+  }
+
+  private async validateServicesHealth(): Promise<void> {
+    try {
+      const dbHealth = await this.enhancedDatabase.isHealthy();
+      const testTranslation = this.languageService.translate(
+        'common.messages.success',
+        'en' as any,
+      );
+
+      if (dbHealth) console.log('✅ Database service healthy');
+      if (testTranslation) console.log('✅ Language service healthy');
+    } catch (error) {
+      console.error('❌ Service health validation failed:', error.message);
     }
   }
 }

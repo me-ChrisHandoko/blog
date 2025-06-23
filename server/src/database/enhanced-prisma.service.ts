@@ -1,418 +1,93 @@
-// src/database/enhanced-prisma.service.ts - FIXED LOGGER COMPATIBILITY
+// src/database/enhanced-database.service.ts - CLEAN FACADE PATTERN
 import {
   Injectable,
   OnModuleInit,
   OnModuleDestroy,
   Logger,
 } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 
-export interface DatabaseMetrics {
-  activeConnections: number;
-  idleConnections: number;
-  totalQueries: number;
-  slowQueries: number;
-  avgQueryTime: number;
-  connectionPoolHealth: 'healthy' | 'warning' | 'critical';
-  maxConnections: number;
-  usedConnections: number;
-  connectionPoolUsage: number;
-}
+// Import the specialized services
+import { DatabaseService } from './core/database.service';
+import {
+  DatabaseMonitoringService,
+  QueryMetrics,
+} from './monitoring/database-monitoring.service';
+import {
+  DatabaseHealthService,
+  DatabaseMetrics,
+  HealthCheckResult,
+} from './health/database-health.service';
 
-export interface QueryMetrics {
-  totalQueries: number;
-  slowQueries: number;
-  totalQueryTime: number;
-  averageQueryTime: number;
-  queriesPerSecond: number;
-  slowQueryThreshold: number;
+export interface PaginatedResult<T> {
+  data: T[];
+  nextCursor?: string;
+  hasMore: boolean;
+  metadata: {
+    requestedCount: number;
+    returnedCount: number;
+    hasNextPage: boolean;
+  };
 }
 
 @Injectable()
-export class EnhancedPrismaService
-  extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
-{
-  // ✅ FIXED: Use protected instead of private to avoid conflicts
-  protected readonly logger = new Logger(EnhancedPrismaService.name);
+export class EnhancedDatabaseService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(EnhancedDatabaseService.name);
 
-  private queryMetrics: QueryMetrics = {
-    totalQueries: 0,
-    slowQueries: 0,
-    totalQueryTime: 0,
-    averageQueryTime: 0,
-    queriesPerSecond: 0,
-    slowQueryThreshold: 1000,
-  };
-
-  private connectionPoolMetrics = {
-    maxConnections: 0,
-    activeConnections: 0,
-    idleConnections: 0,
-  };
-
-  private startTime = Date.now();
-  private monitoringInterval?: NodeJS.Timeout;
-
-  constructor(private configService: ConfigService) {
-    const databaseUrl = configService.get('DATABASE_URL');
-    const connectionLimit = configService.get('DB_CONNECTION_LIMIT', '10');
-    const poolTimeout = configService.get('DB_POOL_TIMEOUT', '10');
-    const connectionTimeout = configService.get('DB_CONNECTION_TIMEOUT', '5');
-
-    const optimizedDatabaseUrl =
-      EnhancedPrismaService.buildOptimizedConnectionString(databaseUrl, {
-        connectionLimit: parseInt(connectionLimit),
-        poolTimeout: parseInt(poolTimeout),
-        connectionTimeout: parseInt(connectionTimeout),
-      });
-
-    super({
-      datasources: {
-        db: {
-          url: optimizedDatabaseUrl,
-        },
-      },
-      log: [
-        {
-          emit: 'event',
-          level: 'query',
-        } as const,
-        {
-          emit: 'event',
-          level: 'error',
-        } as const,
-        {
-          emit: 'event',
-          level: 'info',
-        } as const,
-        {
-          emit: 'event',
-          level: 'warn',
-        } as const,
-      ],
-      errorFormat: 'pretty',
-    });
-
-    this.connectionPoolMetrics.maxConnections = parseInt(connectionLimit);
-  }
-
-  /**
-   * ✅ Build optimized PostgreSQL connection string
-   */
-  private static buildOptimizedConnectionString(
-    baseUrl: string,
-    options: {
-      connectionLimit: number;
-      poolTimeout: number;
-      connectionTimeout: number;
-    },
-  ): string {
-    try {
-      const url = new URL(baseUrl);
-
-      url.searchParams.set(
-        'connection_limit',
-        options.connectionLimit.toString(),
-      );
-      url.searchParams.set('pool_timeout', options.poolTimeout.toString());
-      url.searchParams.set(
-        'connect_timeout',
-        options.connectionTimeout.toString(),
-      );
-      url.searchParams.set('statement_timeout', '30000');
-      url.searchParams.set('idle_in_transaction_session_timeout', '60000');
-      url.searchParams.set('tcp_keepalives_idle', '600');
-      url.searchParams.set('tcp_keepalives_interval', '30');
-      url.searchParams.set('tcp_keepalives_count', '3');
-      url.searchParams.set('application_name', 'nest-api');
-      url.searchParams.set('sslmode', 'prefer');
-
-      return url.toString();
-    } catch (error) {
-      console.warn('Failed to parse DATABASE_URL, using as-is:', error.message);
-      return baseUrl;
-    }
-  }
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly monitoringService: DatabaseMonitoringService,
+    private readonly healthService: DatabaseHealthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
-    try {
-      await this.$connect();
-      this.setupQueryMonitoring();
-      this.setupConnectionMonitoring();
-      this.startPerformanceMonitoring();
+    // Start monitoring if enabled
+    const enableMonitoring =
+      this.configService.get('DB_MONITORING_ENABLED', 'true') === 'true';
 
-      this.logger.log(
-        '✅ Enhanced Database connected with optimized connection pooling',
-      );
-      this.logger.log(
-        `📊 Connection pool configured: max=${this.connectionPoolMetrics.maxConnections} connections`,
-      );
-    } catch (error) {
-      this.logger.error('❌ Failed to connect to database:', error);
-      throw error;
+    if (enableMonitoring) {
+      this.healthService.startMonitoring(30000); // Every 30 seconds
     }
+
+    this.logger.log('✅ Enhanced Database Service initialized');
+    this.logServiceConfiguration();
   }
 
   async onModuleDestroy(): Promise<void> {
-    try {
-      if (this.monitoringInterval) {
-        clearInterval(this.monitoringInterval);
-      }
-
-      await this.$disconnect();
-      this.logger.log('✅ Database disconnected gracefully');
-    } catch (error) {
-      this.logger.error('❌ Error during database disconnection:', error);
-    }
+    this.healthService.stopMonitoring();
+    this.logger.log('✅ Enhanced Database Service destroyed');
   }
 
-  /**
-   * ✅ FIXED: Setup comprehensive query monitoring with proper types
-   */
-  private setupQueryMonitoring(): void {
-    (this as any).$on('query', (e: any) => {
-      this.queryMetrics.totalQueries++;
-      this.queryMetrics.totalQueryTime += e.duration;
-      this.queryMetrics.averageQueryTime =
-        this.queryMetrics.totalQueryTime / this.queryMetrics.totalQueries;
-
-      if (e.duration > this.queryMetrics.slowQueryThreshold) {
-        this.queryMetrics.slowQueries++;
-
-        this.logger.warn(`🐌 Slow Query Detected`, {
-          duration: e.duration,
-          query: this.sanitizeQuery(e.query),
-          params: e.params,
-          timestamp: e.timestamp,
-          slowQueryRatio:
-            (
-              (this.queryMetrics.slowQueries / this.queryMetrics.totalQueries) *
-              100
-            ).toFixed(2) + '%',
-        });
-
-        const slowQueryRatio =
-          this.queryMetrics.slowQueries / this.queryMetrics.totalQueries;
-        if (slowQueryRatio > 0.1 && this.queryMetrics.totalQueries > 100) {
-          this.logger.error('🚨 High slow query ratio detected', {
-            slowQueries: this.queryMetrics.slowQueries,
-            totalQueries: this.queryMetrics.totalQueries,
-            ratio: (slowQueryRatio * 100).toFixed(2) + '%',
-          });
-        }
-      }
-
-      if (process.env.NODE_ENV === 'development' && e.duration > 100) {
-        this.logger.debug(`📊 Query: ${e.duration}ms`, {
-          query: this.sanitizeQuery(e.query).substring(0, 200),
-          duration: e.duration,
-        });
-      }
-    });
-
-    (this as any).$on('error', (e: any) => {
-      this.logger.error('💥 Database Error', {
-        message: e.message,
-        target: e.target,
-        timestamp: e.timestamp,
-      });
-    });
-
-    (this as any).$on('warn', (e: any) => {
-      this.logger.warn('⚠️ Database Warning', {
-        message: e.message,
-        target: e.target,
-        timestamp: e.timestamp,
-      });
-    });
-
-    (this as any).$on('info', (e: any) => {
-      this.logger.log('ℹ️ Database Info', {
-        message: e.message,
-        target: e.target,
-        timestamp: e.timestamp,
-      });
-    });
-  }
+  // ==========================================
+  // CORE DATABASE OPERATIONS (Delegate to DatabaseService)
+  // ==========================================
 
   /**
-   * ✅ Setup connection pool monitoring
-   */
-  private setupConnectionMonitoring(): void {
-    this.monitoringInterval = setInterval(async () => {
-      try {
-        const metrics = await this.getDatabaseMetrics();
-
-        if (metrics.connectionPoolHealth === 'critical') {
-          this.logger.error('🚨 Connection Pool Critical State', {
-            activeConnections: metrics.activeConnections,
-            maxConnections: metrics.maxConnections,
-            usage: metrics.connectionPoolUsage,
-            health: metrics.connectionPoolHealth,
-          });
-        } else if (metrics.connectionPoolHealth === 'warning') {
-          this.logger.warn('⚠️ Connection Pool Warning', {
-            activeConnections: metrics.activeConnections,
-            maxConnections: metrics.maxConnections,
-            usage: metrics.connectionPoolUsage,
-            health: metrics.connectionPoolHealth,
-          });
-        }
-
-        this.connectionPoolMetrics.activeConnections =
-          metrics.activeConnections;
-        this.connectionPoolMetrics.idleConnections = metrics.idleConnections;
-      } catch (error) {
-        this.logger.error('Failed to get database metrics:', error);
-      }
-    }, 30000);
-  }
-
-  /**
-   * ✅ Start performance monitoring
-   */
-  private startPerformanceMonitoring(): void {
-    setInterval(() => {
-      const elapsedSeconds = (Date.now() - this.startTime) / 1000;
-      this.queryMetrics.queriesPerSecond =
-        this.queryMetrics.totalQueries / elapsedSeconds;
-
-      if (Math.floor(elapsedSeconds) % 300 === 0 && elapsedSeconds > 0) {
-        this.logger.log('📈 Database Performance Summary', {
-          totalQueries: this.queryMetrics.totalQueries,
-          queriesPerSecond: this.queryMetrics.queriesPerSecond.toFixed(2),
-          averageQueryTime:
-            this.queryMetrics.averageQueryTime.toFixed(2) + 'ms',
-          slowQueries: this.queryMetrics.slowQueries,
-          slowQueryRatio:
-            (
-              (this.queryMetrics.slowQueries / this.queryMetrics.totalQueries) *
-              100
-            ).toFixed(2) + '%',
-        });
-      }
-    }, 60000);
-  }
-
-  /**
-   * ✅ Get comprehensive database metrics with proper typing
-   */
-  async getDatabaseMetrics(): Promise<DatabaseMetrics> {
-    try {
-      const connectionStats = await this.$queryRaw`
-        SELECT 
-          setting::int as max_connections
-        FROM pg_settings 
-        WHERE name = 'max_connections'
-      `;
-
-      const activeConnections = await this.$queryRaw`
-        SELECT 
-          count(*)::int as total,
-          count(*) FILTER (WHERE state = 'active')::int as active,
-          count(*) FILTER (WHERE state = 'idle')::int as idle,
-          count(*) FILTER (WHERE state = 'idle in transaction')::int as idle_in_transaction
-        FROM pg_stat_activity 
-        WHERE datname = current_database()
-          AND pid <> pg_backend_pid()
-      `;
-
-      const connectionStatsArray = Array.isArray(connectionStats)
-        ? connectionStats
-        : [connectionStats];
-      const activeConnectionsArray = Array.isArray(activeConnections)
-        ? activeConnections
-        : [activeConnections];
-
-      const maxConnectionsRow = connectionStatsArray[0];
-      const stats = activeConnectionsArray[0];
-
-      const maxConnections = maxConnectionsRow?.max_connections
-        ? Number(maxConnectionsRow.max_connections)
-        : this.connectionPoolMetrics.maxConnections;
-
-      const activeConns = stats?.active ? Number(stats.active) : 0;
-      const idleConns = stats?.idle ? Number(stats.idle) : 0;
-      const totalConns = stats?.total ? Number(stats.total) : 0;
-      const idleInTransaction = stats?.idle_in_transaction
-        ? Number(stats.idle_in_transaction)
-        : 0;
-
-      const connectionPoolUsage =
-        maxConnections > 0 ? (totalConns / maxConnections) * 100 : 0;
-
-      let connectionPoolHealth: 'healthy' | 'warning' | 'critical' = 'healthy';
-
-      if (connectionPoolUsage > 90 || idleInTransaction > 5) {
-        connectionPoolHealth = 'critical';
-      } else if (connectionPoolUsage > 70 || idleInTransaction > 2) {
-        connectionPoolHealth = 'warning';
-      }
-
-      return {
-        activeConnections: activeConns,
-        idleConnections: idleConns,
-        totalQueries: this.queryMetrics.totalQueries,
-        slowQueries: this.queryMetrics.slowQueries,
-        avgQueryTime:
-          Math.round(this.queryMetrics.averageQueryTime * 100) / 100,
-        connectionPoolHealth,
-        maxConnections,
-        usedConnections: totalConns,
-        connectionPoolUsage: Math.round(connectionPoolUsage * 100) / 100,
-      };
-    } catch (error) {
-      this.logger.error('Failed to get database metrics:', error);
-      return {
-        activeConnections: 0,
-        idleConnections: 0,
-        totalQueries: this.queryMetrics.totalQueries,
-        slowQueries: this.queryMetrics.slowQueries,
-        avgQueryTime: this.queryMetrics.averageQueryTime,
-        connectionPoolHealth: 'critical',
-        maxConnections: this.connectionPoolMetrics.maxConnections,
-        usedConnections: 0,
-        connectionPoolUsage: 0,
-      };
-    }
-  }
-
-  /**
-   * ✅ Enhanced query with automatic monitoring
+   * Execute monitored query with performance tracking
    */
   async monitoredQuery<T>(
     queryFn: () => Promise<T>,
-    queryName?: string,
+    operationName: string,
   ): Promise<T> {
     const start = Date.now();
 
     try {
-      const result = await queryFn();
+      const result = await this.databaseService.safeQuery(
+        queryFn,
+        operationName,
+      );
       const duration = Date.now() - start;
 
-      this.queryMetrics.totalQueries++;
-      this.queryMetrics.totalQueryTime += duration;
-
-      if (duration > this.queryMetrics.slowQueryThreshold) {
-        this.queryMetrics.slowQueries++;
-        this.logger.warn(
-          `🐌 Slow Query: ${queryName || 'unknown'} took ${duration}ms`,
-        );
-      }
-
       if (process.env.NODE_ENV === 'development' && duration > 100) {
-        this.logger.debug(
-          `📊 Query: ${queryName || 'unknown'} - ${duration}ms`,
-        );
+        this.logger.debug(`⚡ ${operationName} - ${duration}ms`);
       }
 
       return result;
     } catch (error) {
       const duration = Date.now() - start;
       this.logger.error(
-        `💥 Query Failed: ${queryName || 'unknown'} after ${duration}ms`,
+        `💥 Query Failed: ${operationName} after ${duration}ms`,
         {
           error: error.message,
           duration,
@@ -423,18 +98,28 @@ export class EnhancedPrismaService
   }
 
   /**
-   * ✅ Optimized pagination helper
+   * Execute monitored transaction
+   */
+  async monitoredTransaction<T>(
+    transactionFn: (tx: any) => Promise<T>,
+    operationName: string,
+  ): Promise<T> {
+    return await this.databaseService.safeTransaction(
+      transactionFn,
+      operationName,
+    );
+  }
+
+  // ==========================================
+  // OPTIMIZED QUERY HELPERS
+  // ==========================================
+
+  /**
+   * Cursor-based pagination helper
    */
   async paginateWithCursor<T>(
     model: any,
-    {
-      cursor,
-      take = 10,
-      where = {},
-      orderBy = { id: 'desc' },
-      include,
-      select,
-    }: {
+    options: {
       cursor?: any;
       take?: number;
       where?: any;
@@ -442,257 +127,322 @@ export class EnhancedPrismaService
       include?: any;
       select?: any;
     },
-  ): Promise<{
-    data: T[];
-    nextCursor?: any;
-    hasMore: boolean;
-    metadata: {
-      requestedCount: number;
-      returnedCount: number;
-      hasNextPage: boolean;
-    };
-  }> {
-    const start = Date.now();
-
-    const items = await model.findMany({
-      take: take + 1,
-      cursor: cursor ? { id: cursor } : undefined,
-      where,
-      orderBy,
+  ): Promise<PaginatedResult<T>> {
+    const {
+      cursor,
+      take = 10,
+      where = {},
+      orderBy = { id: 'desc' },
       include,
       select,
-    });
+    } = options;
 
-    const duration = Date.now() - start;
-
-    if (duration > 500) {
-      this.logger.warn(`Slow pagination query: ${duration}ms`, {
-        model: model.name || 'unknown',
-        take,
-        cursor,
-        where: JSON.stringify(where).substring(0, 100),
+    return await this.monitoredQuery(async () => {
+      const items = await model.findMany({
+        take: take + 1,
+        cursor: cursor ? { id: cursor } : undefined,
+        where,
+        orderBy,
+        include,
+        select,
       });
-    }
 
-    const hasMore = items.length > take;
-    const data = hasMore ? items.slice(0, -1) : items;
-    const nextCursor =
-      hasMore && data.length > 0 ? data[data.length - 1].id : undefined;
+      const hasMore = items.length > take;
+      const data = hasMore ? items.slice(0, -1) : items;
+      const nextCursor =
+        hasMore && data.length > 0 ? data[data.length - 1].id : undefined;
 
-    return {
-      data,
-      nextCursor,
-      hasMore,
-      metadata: {
-        requestedCount: take,
-        returnedCount: data.length,
-        hasNextPage: hasMore,
-      },
-    };
+      return {
+        data,
+        nextCursor,
+        hasMore,
+        metadata: {
+          requestedCount: take,
+          returnedCount: data.length,
+          hasNextPage: hasMore,
+        },
+      };
+    }, 'cursor-pagination');
   }
 
   /**
-   * ✅ Bulk upsert helper
+   * Bulk upsert operation
    */
   async bulkUpsert<T>(
     model: string,
     data: any[],
     uniqueFields: string[],
   ): Promise<T[]> {
-    const start = Date.now();
-
     if (data.length === 0) return [];
 
-    if (data.length <= 10) {
-      return await this.$transaction(
-        data.map((item) =>
-          (this as any)[model].upsert({
-            where: uniqueFields.reduce((acc, field) => {
-              acc[field] = item[field];
-              return acc;
-            }, {}),
-            update: item,
-            create: item,
-          }),
-        ),
-      );
-    }
+    return await this.monitoredQuery(async () => {
+      // For small datasets, use individual operations
+      if (data.length <= 10) {
+        return await this.databaseService.$transaction(
+          data.map((item) =>
+            (this.databaseService as any)[model].upsert({
+              where: uniqueFields.reduce((acc, field) => {
+                acc[field] = item[field];
+                return acc;
+              }, {}),
+              update: item,
+              create: item,
+            }),
+          ),
+        );
+      }
 
-    const chunkSize = 50;
-    const results: T[] = [];
+      // For larger datasets, process in chunks
+      const chunkSize = 50;
+      const results: T[] = [];
 
-    for (let i = 0; i < data.length; i += chunkSize) {
-      const chunk = data.slice(i, i + chunkSize);
-      const chunkResults = await this.$transaction(
-        chunk.map((item) =>
-          (this as any)[model].upsert({
-            where: uniqueFields.reduce((acc, field) => {
-              acc[field] = item[field];
-              return acc;
-            }, {}),
-            update: item,
-            create: item,
-          }),
-        ),
-      );
-      results.push(...chunkResults);
-    }
+      for (let i = 0; i < data.length; i += chunkSize) {
+        const chunk = data.slice(i, i + chunkSize);
+        const chunkResults = await this.databaseService.$transaction(
+          chunk.map((item) =>
+            (this.databaseService as any)[model].upsert({
+              where: uniqueFields.reduce((acc, field) => {
+                acc[field] = item[field];
+                return acc;
+              }, {}),
+              update: item,
+              create: item,
+            }),
+          ),
+        );
+        results.push(...chunkResults);
+      }
 
-    const duration = Date.now() - start;
-    this.logger.log(
-      `Bulk upsert completed: ${data.length} items in ${duration}ms`,
-    );
-
-    return results;
+      return results;
+    }, `bulk-upsert-${model}`);
   }
 
   /**
-   * ✅ Health check with detailed metrics
+   * Cached query execution (basic in-memory cache)
    */
-  async healthCheck(): Promise<{
-    healthy: boolean;
-    metrics: DatabaseMetrics;
-    details: {
-      canConnect: boolean;
-      canQuery: boolean;
-      responseTime: number;
-      connectionPool: string;
-      queryPerformance: string;
-    };
-  }> {
-    const start = Date.now();
+  private queryCache = new Map<string, { data: any; expiry: number }>();
 
-    try {
-      await this.$queryRaw`SELECT 1 as health_check`;
-      const responseTime = Date.now() - start;
-
-      const metrics = await this.getDatabaseMetrics();
-
-      const healthy =
-        responseTime < 2000 &&
-        metrics.connectionPoolHealth !== 'critical' &&
-        metrics.connectionPoolUsage < 95;
-
-      return {
-        healthy,
-        metrics,
-        details: {
-          canConnect: true,
-          canQuery: true,
-          responseTime,
-          connectionPool: metrics.connectionPoolHealth,
-          queryPerformance:
-            metrics.avgQueryTime < 100
-              ? 'good'
-              : metrics.avgQueryTime < 500
-                ? 'warning'
-                : 'poor',
-        },
-      };
-    } catch (error) {
-      const responseTime = Date.now() - start;
-
-      return {
-        healthy: false,
-        metrics: await this.getDatabaseMetrics().catch(() => ({
-          activeConnections: 0,
-          idleConnections: 0,
-          totalQueries: this.queryMetrics.totalQueries,
-          slowQueries: this.queryMetrics.slowQueries,
-          avgQueryTime: 0,
-          connectionPoolHealth: 'critical' as const,
-          maxConnections: 0,
-          usedConnections: 0,
-          connectionPoolUsage: 0,
-        })),
-        details: {
-          canConnect: false,
-          canQuery: false,
-          responseTime,
-          connectionPool: 'critical',
-          queryPerformance: 'unavailable',
-        },
-      };
-    }
-  }
-
-  /**
-   * ✅ ADD: Missing methods for MultilingualBaseService compatibility
-   */
-  async isHealthy(): Promise<boolean> {
-    try {
-      const health = await this.healthCheck();
-      return health.healthy;
-    } catch (error) {
-      this.logger.error('Health check failed:', error);
-      return false;
-    }
-  }
-
-  /**
-   * ✅ Get current query statistics
-   */
-  getQueryStats() {
-    const avgQueryTime =
-      this.queryMetrics.totalQueries > 0
-        ? this.queryMetrics.totalQueryTime / this.queryMetrics.totalQueries
-        : 0;
-
-    return {
-      totalQueries: this.queryMetrics.totalQueries,
-      slowQueries: this.queryMetrics.slowQueries,
-      averageQueryTime: Math.round(avgQueryTime * 100) / 100,
-      slowQueryRatio:
-        this.queryMetrics.totalQueries > 0
-          ? (
-              (this.queryMetrics.slowQueries / this.queryMetrics.totalQueries) *
-              100
-            ).toFixed(2) + '%'
-          : '0%',
-      queriesPerSecond: this.calculateQueriesPerSecond(),
-    };
-  }
-
-  /**
-   * ✅ Calculate queries per second
-   */
-  private calculateQueriesPerSecond(): number {
-    const elapsedSeconds = (Date.now() - this.startTime) / 1000;
-    return elapsedSeconds > 0
-      ? this.queryMetrics.totalQueries / elapsedSeconds
-      : 0;
-  }
-
-  /**
-   * ✅ Reset query metrics
-   */
-  resetQueryMetrics(): void {
-    this.queryMetrics = {
-      totalQueries: 0,
-      slowQueries: 0,
-      totalQueryTime: 0,
-      averageQueryTime: 0,
-      queriesPerSecond: 0,
-      slowQueryThreshold: 1000,
-    };
-    this.startTime = Date.now();
-  }
-
-  /**
-   * ✅ Query caching helper
-   */
   async cachedQuery<T>(
     key: string,
     queryFn: () => Promise<T>,
     ttlSeconds: number = 300,
   ): Promise<T> {
-    return await this.monitoredQuery(queryFn, `cached-${key}`);
+    const cached = this.queryCache.get(key);
+    const now = Date.now();
+
+    if (cached && cached.expiry > now) {
+      return cached.data;
+    }
+
+    const result = await this.monitoredQuery(queryFn, `cached-${key}`);
+
+    this.queryCache.set(key, {
+      data: result,
+      expiry: now + ttlSeconds * 1000,
+    });
+
+    return result;
   }
 
-  private sanitizeQuery(query: string): string {
-    return query
-      .replace(/('[^']*'|"[^"]*")/g, '[REDACTED]')
-      .replace(/\$\d+/g, '[PARAM]')
-      .substring(0, 500);
+  // ==========================================
+  // HEALTH & MONITORING (Delegate to specialized services)
+  // ==========================================
+
+  /**
+   * Get comprehensive health check
+   */
+  async healthCheck(): Promise<HealthCheckResult> {
+    return await this.healthService.performHealthCheck();
+  }
+
+  /**
+   * Get database metrics
+   */
+  async getDatabaseMetrics(): Promise<DatabaseMetrics> {
+    return await this.healthService.getDatabaseMetrics();
+  }
+
+  /**
+   * Get query performance metrics
+   */
+  getQueryStats(): QueryMetrics {
+    return this.monitoringService.getQueryMetrics();
+  }
+
+  /**
+   * Get performance analysis
+   */
+  getPerformanceAnalysis() {
+    return this.monitoringService.getPerformanceAnalysis();
+  }
+
+  /**
+   * Check if database is healthy
+   */
+  async isHealthy(): Promise<boolean> {
+    return await this.databaseService.isHealthy();
+  }
+
+  /**
+   * Get health summary for dashboards
+   */
+  async getHealthSummary() {
+    return await this.healthService.getHealthSummary();
+  }
+
+  // ==========================================
+  // UTILITY METHODS
+  // ==========================================
+
+  /**
+   * Reset query metrics (for testing)
+   */
+  resetQueryMetrics(): void {
+    this.monitoringService.resetMetrics();
+  }
+
+  /**
+   * Set slow query threshold
+   */
+  setSlowQueryThreshold(milliseconds: number): void {
+    this.monitoringService.setSlowQueryThreshold(milliseconds);
+  }
+
+  /**
+   * Clear query cache
+   */
+  clearQueryCache(): void {
+    this.queryCache.clear();
+    this.logger.log('🗑️ Query cache cleared');
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats() {
+    const now = Date.now();
+    const activeEntries = Array.from(this.queryCache.entries()).filter(
+      ([, value]) => value.expiry > now,
+    ).length;
+
+    return {
+      totalEntries: this.queryCache.size,
+      activeEntries,
+      expiredEntries: this.queryCache.size - activeEntries,
+    };
+  }
+
+  // ==========================================
+  // PRISMA CLIENT DELEGATION
+  // ==========================================
+
+  // Delegate all Prisma operations to the core database service
+  get user() {
+    return this.databaseService.user;
+  }
+  get profile() {
+    return this.databaseService.profile;
+  }
+  get profileTranslation() {
+    return this.databaseService.profileTranslation;
+  }
+  get category() {
+    return this.databaseService.category;
+  }
+  get categoryTranslation() {
+    return this.databaseService.categoryTranslation;
+  }
+  get post() {
+    return this.databaseService.post;
+  }
+  get postTranslation() {
+    return this.databaseService.postTranslation;
+  }
+  get tag() {
+    return this.databaseService.tag;
+  }
+  get tagTranslation() {
+    return this.databaseService.tagTranslation;
+  }
+  get postTag() {
+    return this.databaseService.postTag;
+  }
+  get comment() {
+    return this.databaseService.comment;
+  }
+  get session() {
+    return this.databaseService.session;
+  }
+  get permission() {
+    return this.databaseService.permission;
+  }
+  get userPermission() {
+    return this.databaseService.userPermission;
+  }
+  get auditLog() {
+    return this.databaseService.auditLog;
+  }
+
+  // Prisma client methods
+  get $connect() {
+    return this.databaseService.$connect.bind(this.databaseService);
+  }
+  get $disconnect() {
+    return this.databaseService.$disconnect.bind(this.databaseService);
+  }
+  get $executeRaw() {
+    return this.databaseService.$executeRaw.bind(this.databaseService);
+  }
+  get $executeRawUnsafe() {
+    return this.databaseService.$executeRawUnsafe.bind(this.databaseService);
+  }
+  get $queryRaw() {
+    return this.databaseService.$queryRaw.bind(this.databaseService);
+  }
+  get $queryRawUnsafe() {
+    return this.databaseService.$queryRawUnsafe.bind(this.databaseService);
+  }
+  get $transaction() {
+    return this.databaseService.$transaction.bind(this.databaseService);
+  }
+
+  // ==========================================
+  // PRIVATE HELPER METHODS
+  // ==========================================
+
+  /**
+   * Log service configuration on startup
+   */
+  private logServiceConfiguration(): void {
+    const config = this.databaseService.getConfig();
+
+    this.logger.log('📊 Enhanced Database Service Configuration:');
+    this.logger.log(
+      `   - Connection Pool: ${config.connectionLimit} max connections`,
+    );
+    this.logger.log(`   - Pool Timeout: ${config.poolTimeout}s`);
+    this.logger.log(`   - Connection Timeout: ${config.connectionTimeout}s`);
+    this.logger.log(`   - Monitoring: Enabled`);
+    this.logger.log(`   - Health Checks: Enabled`);
+    this.logger.log(`   - Query Caching: Enabled`);
+  }
+
+  /**
+   * Get service statistics for debugging
+   */
+  getServiceStats() {
+    const queryStats = this.getQueryStats();
+    const cacheStats = this.getCacheStats();
+    const performanceAnalysis = this.getPerformanceAnalysis();
+
+    return {
+      database: {
+        queries: queryStats,
+        cache: cacheStats,
+        performance: performanceAnalysis,
+      },
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    };
   }
 }

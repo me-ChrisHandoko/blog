@@ -1,682 +1,326 @@
-// src/i18n/services/language.service.ts - FIXED Version
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+// src/i18n/services/language.service.ts - WITH PRISMA CONVERSION METHODS
+import { Injectable, Logger } from '@nestjs/common';
 import {
   SupportedLanguage,
-  LanguageMetadata,
-  isValidLanguage,
   getDefaultLanguage,
+  SUPPORTED_LANGUAGES,
+  LanguageMetadata,
+  LANGUAGE_METADATA,
 } from '../constants/languages';
-import * as fs from 'fs';
-import * as path from 'path';
-import { LRUCache, CacheMetrics } from '../../common/cache/lru-cache';
 
-// Translation interfaces for better type safety
-interface TranslationFile {
-  [key: string]: string | TranslationFile;
+export interface LanguageDetectionSources {
+  query?: string;
+  header?: string;
+  acceptLanguage?: string;
 }
 
-interface LoadedTranslations {
-  [SupportedLanguage.INDONESIAN]: TranslationFile;
-  [SupportedLanguage.ENGLISH]: TranslationFile;
-  [SupportedLanguage.CHINESE]: TranslationFile;
-}
-
-/**
- * Enhanced File-Based Language Service with Optimized Cache
- */
 @Injectable()
-export class LanguageService implements OnModuleInit {
+export class LanguageService {
   private readonly logger = new Logger(LanguageService.name);
-  private translations: LoadedTranslations;
-  private readonly translationsPath: string;
-
-  // FIXED: Optimized cache with size limit
-  private translationCache = new LRUCache<string, string>(500);
-  private fileStatsCache = new LRUCache<string, any>(10);
 
   constructor() {
-    this.translationsPath = path.join(
-      process.cwd(),
-      'src',
-      'i18n',
-      'translations',
-    );
-    this.translations = {} as LoadedTranslations;
-  }
-
-  async onModuleInit(): Promise<void> {
-    await this.loadTranslations();
-    await this.warmCache();
-    this.logger.log('✅ File-based translations loaded successfully');
+    this.logger.log('✅ LanguageService initialized');
   }
 
   /**
-   * Pre-populate cache with essential translations
-   */
-  private async warmCache(): Promise<void> {
-    const commonKeys = [
-      'auth.messages.loginSuccess',
-      'auth.messages.invalidCredentials',
-      'validation.email.required',
-      'validation.password.required',
-      'common.messages.success',
-      'common.messages.error',
-    ];
-
-    this.getSupportedLanguages().forEach((lang) => {
-      commonKeys.forEach((key) => {
-        this.translate(key, lang); // Pre-populate cache
-      });
-    });
-  }
-
-  /**
-   * Load all translation files from the translations directory
-   */
-  private async loadTranslations(): Promise<void> {
-    try {
-      const supportedLanguages = this.getSupportedLanguages();
-
-      for (const lang of supportedLanguages) {
-        this.translations[lang] = await this.loadLanguageTranslations(lang);
-      }
-
-      this.logger.log(
-        `📁 Loaded translations for ${supportedLanguages.length} languages`,
-      );
-      this.validateLoadedTranslations();
-    } catch (error) {
-      this.logger.error('❌ Failed to load translations:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Load translation files for a specific language
-   */
-  private async loadLanguageTranslations(
-    language: SupportedLanguage,
-  ): Promise<TranslationFile> {
-    const langPath = path.join(this.translationsPath, language);
-
-    if (!fs.existsSync(langPath)) {
-      this.logger.warn(
-        `⚠️  Translation directory not found for language: ${language}`,
-      );
-      return {};
-    }
-
-    const translationFiles = await this.getTranslationFiles(langPath);
-    const mergedTranslations: TranslationFile = {};
-
-    for (const file of translationFiles) {
-      const filePath = path.join(langPath, file);
-      try {
-        const fileContent = fs.readFileSync(filePath, 'utf8');
-        const parsed = JSON.parse(fileContent);
-        const fileKey = path.basename(file, '.json');
-
-        mergedTranslations[fileKey] = parsed;
-        this.logger.debug(`📄 Loaded ${file} for ${language}`);
-      } catch (error) {
-        this.logger.error(
-          `❌ Failed to load translation file: ${filePath}`,
-          error,
-        );
-      }
-    }
-
-    return mergedTranslations;
-  }
-
-  /**
-   * Get all JSON translation files in a directory
-   */
-  private async getTranslationFiles(dirPath: string): Promise<string[]> {
-    try {
-      const files = fs.readdirSync(dirPath);
-      return files.filter((file) => file.endsWith('.json'));
-    } catch (error) {
-      this.logger.error(
-        `Failed to read translation directory: ${dirPath}`,
-        error,
-      );
-      return [];
-    }
-  }
-
-  /**
-   * Validate that all languages have consistent translation keys
-   */
-  private validateLoadedTranslations(): void {
-    const supportedLanguages = this.getSupportedLanguages();
-    const [defaultLang, ...otherLangs] = supportedLanguages;
-    const defaultKeys = this.getAllKeysFromTranslation(
-      this.translations[defaultLang],
-    );
-
-    let totalMissingKeys = 0;
-
-    for (const lang of otherLangs) {
-      const langKeys = this.getAllKeysFromTranslation(this.translations[lang]);
-      const missingKeys = defaultKeys.filter((key) => !langKeys.includes(key));
-
-      if (missingKeys.length > 0) {
-        totalMissingKeys += missingKeys.length;
-        this.logger.warn(
-          `⚠️  Missing ${missingKeys.length} translation keys in ${lang}:`,
-          missingKeys.slice(0, 5),
-        );
-      }
-    }
-
-    if (totalMissingKeys === 0) {
-      this.logger.log(
-        '✅ All translation keys are consistent across languages',
-      );
-    } else {
-      this.logger.warn(
-        `⚠️  Found ${totalMissingKeys} missing translation keys across languages`,
-      );
-    }
-  }
-
-  /**
-   * Get all translation keys from a translation object (flattened)
-   */
-  private getAllKeysFromTranslation(
-    translation: TranslationFile,
-    prefix: string = '',
-  ): string[] {
-    const keys: string[] = [];
-
-    for (const [key, value] of Object.entries(translation)) {
-      const fullKey = prefix ? `${prefix}.${key}` : key;
-
-      if (typeof value === 'string') {
-        keys.push(fullKey);
-      } else if (typeof value === 'object' && value !== null) {
-        keys.push(...this.getAllKeysFromTranslation(value, fullKey));
-      }
-    }
-
-    return keys;
-  }
-
-  /**
-   * Get default language
+   * Get the default language
    */
   getDefaultLanguage(): SupportedLanguage {
     return getDefaultLanguage();
   }
 
   /**
-   * Detect language from various sources with priority
-   */
-  detectLanguageFromSources(sources: {
-    query?: string;
-    header?: string;
-    acceptLanguage?: string;
-    userPreference?: string;
-  }): SupportedLanguage {
-    const { query, header, acceptLanguage, userPreference } = sources;
-
-    // Priority 1: Query parameter (?lang=en)
-    if (query && isValidLanguage(query)) {
-      this.logger.debug(`Language detected from query: ${query}`);
-      return query;
-    }
-
-    // Priority 2: Custom header (X-Language: en)
-    if (header && isValidLanguage(header)) {
-      this.logger.debug(`Language detected from header: ${header}`);
-      return header;
-    }
-
-    // Priority 3: User's saved preference
-    if (userPreference && isValidLanguage(userPreference)) {
-      this.logger.debug(
-        `Language detected from user preference: ${userPreference}`,
-      );
-      return userPreference;
-    }
-
-    // Priority 4: Accept-Language header from browser
-    if (acceptLanguage) {
-      const detectedLang = this.parseAcceptLanguageHeader(acceptLanguage);
-      if (detectedLang) {
-        this.logger.debug(
-          `Language detected from Accept-Language: ${detectedLang}`,
-        );
-        return detectedLang;
-      }
-    }
-
-    // Fallback to default language
-    const defaultLang = this.getDefaultLanguage();
-    this.logger.debug(`Using default language: ${defaultLang}`);
-    return defaultLang;
-  }
-
-  /**
-   * Parse Accept-Language header from browser
-   */
-  private parseAcceptLanguageHeader(
-    acceptLanguage: string,
-  ): SupportedLanguage | null {
-    try {
-      const languages = acceptLanguage
-        .split(',')
-        .map((lang) => {
-          const [code, priority] = lang.trim().split(';');
-          const langCode = code.split('-')[0].toLowerCase(); // en-US -> en
-          const q = priority ? parseFloat(priority.replace('q=', '')) : 1;
-          return { code: langCode, priority: q };
-        })
-        .sort((a, b) => b.priority - a.priority); // Sort by priority
-
-      for (const lang of languages) {
-        if (isValidLanguage(lang.code)) {
-          return lang.code;
-        }
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Error parsing Accept-Language header: ${error.message}`,
-      );
-    }
-
-    return null;
-  }
-
-  /**
-   * Main translation method with LRU caching
-   */
-  translate(
-    key: string,
-    lang: SupportedLanguage,
-    args?: Record<string, any>,
-  ): string {
-    // Input validation
-    if (!key || typeof key !== 'string') {
-      this.logger.warn(`Invalid translation key provided: ${key}`);
-      return key || '';
-    }
-
-    // Create cache key
-    const cacheKey = `${lang}:${key}:${args ? JSON.stringify(args) : ''}`;
-
-    // Try cache first (LRU automatically handles access tracking)
-    const cached = this.translationCache.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    // Cache miss - get translation using path notation
-    let translation = this.getNestedTranslation(key, lang);
-
-    if (!translation) {
-      // Try default language as fallback
-      if (lang !== this.getDefaultLanguage()) {
-        translation = this.getNestedTranslation(key, this.getDefaultLanguage());
-        if (translation) {
-          this.logger.debug(
-            `Using default language translation for key: ${key}`,
-          );
-        }
-      }
-    }
-
-    if (!translation) {
-      // No translation found - return key
-      this.logger.warn(
-        `No translation found for key: ${key} in language: ${lang}`,
-      );
-      translation = key;
-    }
-
-    // Interpolate arguments
-    const result = this.interpolateArgs(translation, args);
-
-    // Cache the result (LRU handles eviction automatically)
-    this.translationCache.set(cacheKey, result);
-
-    return result;
-  }
-
-  /**
-   * Get nested translation using dot notation
-   */
-  private getNestedTranslation(
-    key: string,
-    lang: SupportedLanguage,
-  ): string | null {
-    if (!this.translations[lang]) {
-      return null;
-    }
-
-    const pathParts = key.split('.');
-    let current: any = this.translations[lang];
-
-    for (const part of pathParts) {
-      if (current && typeof current === 'object' && part in current) {
-        current = current[part];
-      } else {
-        return null;
-      }
-    }
-
-    return typeof current === 'string' ? current : null;
-  }
-
-  /**
-   * Simple string interpolation for arguments
-   */
-  private interpolateArgs(
-    template: string,
-    args?: Record<string, any>,
-  ): string {
-    if (!args) return template;
-
-    return Object.keys(args).reduce((result, key) => {
-      return result.replace(new RegExp(`{${key}}`, 'g'), String(args[key]));
-    }, template);
-  }
-
-  /**
-   * Type-safe translation methods for specific modules
-   */
-  translateAuth(key: string, lang: SupportedLanguage): string {
-    return this.translate(`auth.messages.${key}`, lang);
-  }
-
-  translateUsers(
-    key: string,
-    category: 'messages' | 'roles',
-    lang: SupportedLanguage,
-  ): string {
-    return this.translate(`users.${category}.${key}`, lang);
-  }
-
-  translateValidation(
-    category: string,
-    key: string,
-    lang: SupportedLanguage,
-    args?: Record<string, any>,
-  ): string {
-    return this.translate(`validation.${category}.${key}`, lang, args);
-  }
-
-  translateCommon(
-    category: string,
-    key: string,
-    lang: SupportedLanguage,
-    args?: Record<string, any>,
-  ): string {
-    return this.translate(`common.${category}.${key}`, lang, args);
-  }
-
-  /**
-   * Reload translations (useful for development)
-   */
-  async reloadTranslations(): Promise<void> {
-    this.logger.log('🔄 Reloading translations...');
-    this.translationCache.clear();
-    await this.loadTranslations();
-  }
-
-  /**
-   * Get translation from specific file
-   */
-  getTranslationFromFile(
-    fileName: string,
-    key: string,
-    lang: SupportedLanguage,
-  ): string | null {
-    const fileTranslations = this.translations[lang]?.[fileName];
-    if (!fileTranslations) return null;
-
-    const pathParts = key.split('.');
-    let current: any = fileTranslations;
-
-    for (const part of pathParts) {
-      if (current && typeof current === 'object' && part in current) {
-        current = current[part];
-      } else {
-        return null;
-      }
-    }
-
-    return typeof current === 'string' ? current : null;
-  }
-
-  /**
-   * Get all available files for a language
-   */
-  getAvailableFiles(lang: SupportedLanguage): string[] {
-    if (!this.translations[lang]) return [];
-    return Object.keys(this.translations[lang]);
-  }
-
-  /**
-   * Check if a translation file exists
-   */
-  hasTranslationFile(fileName: string, lang: SupportedLanguage): boolean {
-    return !!(this.translations[lang] && this.translations[lang][fileName]);
-  }
-
-  /**
-   * Get language metadata
-   */
-  getLanguageMetadata(lang: SupportedLanguage) {
-    return LanguageMetadata[lang];
-  }
-
-  /**
-   * Get supported languages with metadata
-   */
-  getSupportedLanguagesWithMetadata() {
-    return Object.values(SupportedLanguage).map((lang) => ({
-      code: lang,
-      ...this.getLanguageMetadata(lang),
-    }));
-  }
-
-  /**
-   * Validate language and return valid one or default
+   * Validate if a language code is supported
    */
   validateLanguage(lang: string): SupportedLanguage {
-    if (!isValidLanguage(lang)) {
-      this.logger.warn(
-        `Unsupported language requested: ${lang}, falling back to default`,
-      );
-      return this.getDefaultLanguage();
+    const upperLang = lang?.toUpperCase();
+
+    if (SUPPORTED_LANGUAGES.includes(upperLang as SupportedLanguage)) {
+      return upperLang as SupportedLanguage;
     }
-    return lang;
+
+    return getDefaultLanguage();
   }
 
   /**
-   * Convert Prisma language to supported language
+   * Convert SupportedLanguage to Prisma Language enum
+   */
+  supportedToPrisma(lang: SupportedLanguage): string {
+    const languageMapping = {
+      EN: 'ENGLISH',
+      ID: 'INDONESIAN',
+    };
+
+    return languageMapping[lang] || languageMapping['EN'];
+  }
+
+  /**
+   * Convert Prisma Language enum to SupportedLanguage
    */
   prismaToSupported(prismaLang: string): SupportedLanguage {
-    const langMap: Record<string, SupportedLanguage> = {
-      ID: SupportedLanguage.INDONESIAN,
-      EN: SupportedLanguage.ENGLISH,
-      ZH: SupportedLanguage.CHINESE,
+    const reverseMapping = {
+      ENGLISH: 'EN' as SupportedLanguage,
+      INDONESIAN: 'ID' as SupportedLanguage,
     };
-    return langMap[prismaLang] || this.getDefaultLanguage();
-  }
 
-  /**
-   * Convert supported language to Prisma language
-   */
-  supportedToPrisma(supportedLang: SupportedLanguage): string {
-    const langMap: Record<SupportedLanguage, string> = {
-      [SupportedLanguage.INDONESIAN]: 'ID',
-      [SupportedLanguage.ENGLISH]: 'EN',
-      [SupportedLanguage.CHINESE]: 'ZH',
-    };
-    return langMap[supportedLang] || 'ID';
-  }
-
-  /**
-   * Check if language is supported
-   */
-  isSupported(lang: string): lang is SupportedLanguage {
-    return isValidLanguage(lang);
+    return reverseMapping[prismaLang] || 'EN';
   }
 
   /**
    * Get all supported languages
    */
   getSupportedLanguages(): SupportedLanguage[] {
-    return Object.values(SupportedLanguage);
+    return [...SUPPORTED_LANGUAGES];
   }
 
   /**
-   * Get native name of language
+   * Get all Prisma language values
    */
-  getNativeName(lang: SupportedLanguage): string {
-    return this.getLanguageMetadata(lang).nativeName;
+  getAllPrismaLanguages(): string[] {
+    return SUPPORTED_LANGUAGES.map((lang) => this.supportedToPrisma(lang));
   }
 
   /**
-   * Get English name of language
+   * Get language metadata
    */
-  getEnglishName(lang: SupportedLanguage): string {
-    return this.getLanguageMetadata(lang).name;
+  getLanguageMetadata(lang: SupportedLanguage): LanguageMetadata {
+    return LANGUAGE_METADATA[lang] || LANGUAGE_METADATA[getDefaultLanguage()];
   }
 
   /**
-   * Get language flag emoji
-   */
-  getLanguageFlag(lang: SupportedLanguage): string {
-    return this.getLanguageMetadata(lang).flag;
-  }
-
-  /**
-   * Get display name with flag and native name
+   * Get display name for a language
    */
   getDisplayName(lang: SupportedLanguage): string {
     const metadata = this.getLanguageMetadata(lang);
-    return `${metadata.flag} ${metadata.nativeName}`;
+    return metadata.displayName;
   }
 
   /**
-   * Get all available translations for a language
+   * Check if a language is RTL
    */
-  getAvailableTranslations(lang: SupportedLanguage): string[] {
-    if (!this.translations[lang]) return [];
-    return this.getAllKeysFromTranslation(this.translations[lang]);
+  isRightToLeft(lang: SupportedLanguage): boolean {
+    const metadata = this.getLanguageMetadata(lang);
+    return metadata.direction === 'rtl';
   }
 
   /**
-   * Check if a translation key exists
+   * Translate a key to the specified language
+   */
+  translate(
+    key: string,
+    lang: SupportedLanguage,
+    params?: Record<string, any>,
+  ): string {
+    try {
+      // Validate language
+      const validLang = this.validateLanguage(lang);
+
+      // Simple implementation for now
+      // In a real implementation, this would load from translation files
+      let translation = this.getSimpleTranslation(key, validLang);
+
+      if (!translation && validLang !== getDefaultLanguage()) {
+        // Fallback to default language
+        translation = this.getSimpleTranslation(key, getDefaultLanguage());
+      }
+
+      if (!translation) {
+        this.logger.warn(`Translation not found: ${key} (${validLang})`);
+        return key;
+      }
+
+      return this.interpolateParams(translation, params);
+    } catch (error) {
+      this.logger.error(`Translation error for key ${key}:`, error);
+      return key;
+    }
+  }
+
+  /**
+   * Check if a translation exists
    */
   hasTranslation(key: string, lang: SupportedLanguage): boolean {
-    return this.getNestedTranslation(key, lang) !== null;
+    try {
+      const validLang = this.validateLanguage(lang);
+      const translation = this.getSimpleTranslation(key, validLang);
+      return !!translation;
+    } catch {
+      return false;
+    }
   }
 
   /**
-   * Get all translations for a specific section
+   * Detect language from various sources
    */
-  getTranslationSection(section: string, lang: SupportedLanguage): any {
-    return this.translations[lang]?.[section] || null;
+  detectLanguageFromSources(
+    sources: LanguageDetectionSources,
+  ): SupportedLanguage {
+    // Check query parameter first
+    if (sources.query) {
+      const validLang = this.validateLanguage(sources.query);
+      if (validLang) return validLang;
+    }
+
+    // Check header
+    if (sources.header) {
+      const validLang = this.validateLanguage(sources.header);
+      if (validLang) return validLang;
+    }
+
+    // Check Accept-Language header
+    if (sources.acceptLanguage) {
+      return this.detectFromAcceptLanguage(sources.acceptLanguage);
+    }
+
+    return getDefaultLanguage();
   }
 
   /**
-   * Get comprehensive cache statistics
+   * Detect language from Accept-Language header
    */
-  getCacheStats(): CacheMetrics & {
-    efficiency: 'excellent' | 'good' | 'fair' | 'poor';
-    recommendations: string[];
-    mostAccessed: Array<{ key: string; accessCount: number }>;
-    leastAccessed: Array<{ key: string; accessCount: number }>;
-  } {
-    const metrics = this.translationCache.getMetrics();
+  detectFromAcceptLanguage(acceptLanguage: string): SupportedLanguage {
+    try {
+      // Parse Accept-Language header (simplified)
+      const languages = acceptLanguage
+        .split(',')
+        .map((lang) => lang.split(';')[0].trim().toUpperCase())
+        .map((lang) => lang.substring(0, 2)); // Get first 2 characters
 
-    // Determine cache efficiency
-    let efficiency: 'excellent' | 'good' | 'fair' | 'poor';
-    if (metrics.hitRate >= 90) efficiency = 'excellent';
-    else if (metrics.hitRate >= 75) efficiency = 'good';
-    else if (metrics.hitRate >= 50) efficiency = 'fair';
-    else efficiency = 'poor';
-
-    // Generate recommendations
-    const recommendations: string[] = [];
-    if (metrics.hitRate < 70) {
-      recommendations.push(
-        'Consider increasing cache size or reviewing cache keys',
-      );
-    }
-    if (metrics.size < metrics.maxSize * 0.5) {
-      recommendations.push('Cache is underutilized, could reduce max size');
-    }
-    if (metrics.size === metrics.maxSize) {
-      recommendations.push(
-        'Cache is at capacity, consider increasing max size',
-      );
+      for (const lang of languages) {
+        const mappedLang = this.mapToSupportedLanguage(lang);
+        if (mappedLang) {
+          return mappedLang;
+        }
+      }
+    } catch (error) {
+      this.logger.warn('Failed to parse Accept-Language header:', error);
     }
 
+    return getDefaultLanguage();
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats() {
     return {
-      ...metrics,
-      efficiency,
-      recommendations,
-      mostAccessed: this.translationCache.getMostAccessed(5),
-      leastAccessed: this.translationCache.getLeastAccessed(5),
+      size: 0,
+      hits: 0,
+      misses: 0,
     };
   }
 
   /**
-   * Clear translation cache and optionally reset metrics
+   * Clear translation cache
    */
-  clearCache(resetMetrics: boolean = false): void {
-    const previousSize = this.translationCache.size();
-    this.translationCache.clear();
-
-    if (resetMetrics) {
-      this.translationCache.resetMetrics();
-    }
-
-    this.logger.log(
-      `🗑️  Translation cache cleared (${previousSize} entries removed)`,
-    );
+  clearCache(): void {
+    this.logger.log('Translation cache cleared');
   }
 
   /**
-   * Get file modification stats
+   * Get available locales
    */
-  getFileStats(): Record<SupportedLanguage, Record<string, any>> {
-    const stats: Record<SupportedLanguage, Record<string, any>> = {} as any;
+  getAvailableLocales(): Array<{
+    code: SupportedLanguage;
+    name: string;
+    nativeName: string;
+  }> {
+    return SUPPORTED_LANGUAGES.map((lang) => {
+      const metadata = this.getLanguageMetadata(lang);
+      return {
+        code: lang,
+        name: metadata.displayName,
+        nativeName: metadata.nativeName,
+      };
+    });
+  }
 
-    for (const lang of this.getSupportedLanguages()) {
-      stats[lang] = {};
-      const langPath = path.join(this.translationsPath, lang);
+  /**
+   * Validate and convert language for database operations
+   */
+  validateAndConvertToPrisma(lang: string): string {
+    const validatedLang = this.validateLanguage(lang);
+    return this.supportedToPrisma(validatedLang);
+  }
 
-      if (fs.existsSync(langPath)) {
-        const files = fs
-          .readdirSync(langPath)
-          .filter((file) => file.endsWith('.json'));
+  /**
+   * Simple translation implementation
+   */
+  private getSimpleTranslation(
+    key: string,
+    lang: SupportedLanguage,
+  ): string | null {
+    // Simple hardcoded translations for common keys
+    const translations = {
+      EN: {
+        'common.messages.success': 'Success',
+        'common.messages.error': 'Error',
+        'common.messages.notFound': 'Not Found',
+        'common.messages.badRequest': 'Bad Request',
+        'common.messages.internalError': 'Internal Server Error',
+        'auth.messages.unauthorized': 'Unauthorized',
+        'auth.messages.forbidden': 'Forbidden',
+        'auth.messages.invalidCredentials': 'Invalid credentials',
+        'auth.messages.loginFailed': 'Login failed',
+        'auth.messages.invalidToken': 'Invalid token',
+        'validation.password.mismatch': 'Password confirmation does not match',
+        'validation.email.alreadyExists': 'Email already exists',
+        'validation.messages.failed': 'Validation failed',
+        'users.messages.created': 'User created successfully',
+        'users.messages.updated': 'User updated successfully',
+        'users.messages.deleted': 'User deleted successfully',
+        'users.messages.notFound': 'User not found',
+      },
+      ID: {
+        'common.messages.success': 'Berhasil',
+        'common.messages.error': 'Kesalahan',
+        'common.messages.notFound': 'Tidak Ditemukan',
+        'common.messages.badRequest': 'Permintaan Tidak Valid',
+        'common.messages.internalError': 'Kesalahan Server Internal',
+        'auth.messages.unauthorized': 'Tidak Diizinkan',
+        'auth.messages.forbidden': 'Dilarang',
+        'auth.messages.invalidCredentials': 'Kredensial tidak valid',
+        'auth.messages.loginFailed': 'Login gagal',
+        'auth.messages.invalidToken': 'Token tidak valid',
+        'validation.password.mismatch': 'Konfirmasi password tidak cocok',
+        'validation.email.alreadyExists': 'Email sudah ada',
+        'validation.messages.failed': 'Validasi gagal',
+        'users.messages.created': 'User berhasil dibuat',
+        'users.messages.updated': 'User berhasil diperbarui',
+        'users.messages.deleted': 'User berhasil dihapus',
+        'users.messages.notFound': 'User tidak ditemukan',
+      },
+    };
 
-        for (const file of files) {
-          const filePath = path.join(langPath, file);
-          try {
-            const stat = fs.statSync(filePath);
-            stats[lang][file] = {
-              size: stat.size,
-              modified: stat.mtime,
-              exists: true,
-            };
-          } catch (error) {
-            stats[lang][file] = {
-              exists: false,
-              error: error.message,
-            };
-          }
-        }
-      }
+    return translations[lang]?.[key] || null;
+  }
+
+  /**
+   * Map language code to supported language
+   */
+  private mapToSupportedLanguage(langCode: string): SupportedLanguage | null {
+    const mapping = {
+      EN: 'EN' as SupportedLanguage,
+      ID: 'ID' as SupportedLanguage,
+      IN: 'ID' as SupportedLanguage, // Alternative for Indonesian
+    };
+
+    return mapping[langCode.toUpperCase()] || null;
+  }
+
+  /**
+   * Interpolate parameters into translation string
+   */
+  private interpolateParams(
+    translation: string,
+    params?: Record<string, any>,
+  ): string {
+    if (!params || typeof translation !== 'string') {
+      return translation;
     }
 
-    return stats;
+    return translation.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+      return params[key]?.toString() || match;
+    });
   }
 }

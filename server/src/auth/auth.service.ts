@@ -1,4 +1,4 @@
-// src/auth/auth.service.ts - SIMPLIFIED VERSION
+// src/auth/auth.service.ts
 import {
   ConflictException,
   Injectable,
@@ -7,14 +7,14 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from 'src/database/prisma.service';
+import { EnhancedDatabaseService } from '../database/enhanced-database.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import {
   SupportedLanguage,
   getDefaultLanguage,
-} from 'src/i18n/constants/languages';
+} from '../i18n/constants/languages';
 import * as bcrypt from 'bcryptjs';
-import { LanguageService } from 'src/i18n/services/language.service';
+import { LanguageService } from '../i18n/services/language.service';
 
 @Injectable()
 export class AuthService {
@@ -23,7 +23,7 @@ export class AuthService {
   constructor(
     private jwtService: JwtService,
     private configService: ConfigService,
-    private readonly prisma: PrismaService,
+    private readonly prisma: EnhancedDatabaseService,
     private readonly languageService: LanguageService,
   ) {
     console.log('🔐 AuthService initialized');

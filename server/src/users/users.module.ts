@@ -1,29 +1,35 @@
-// src/users/users.module.ts - UPDATED FOR COMPOSITION PATTERN
+// src/users/users.module.ts
 import { Module } from '@nestjs/common';
+
+import { UserService } from './services/user.service';
+import { ProfileService } from './services/profile.service';
+import { UserAnalyticsService } from './services/user-analytics.service';
+import { UserQueryService } from './services/user-query.service';
+import { UserBulkService } from './services/user-bulk.service';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
-// ✅ Import all required services for composition
-import { PrismaService } from '../database/prisma.service';
-import { EnhancedPrismaService } from '../database/enhanced-prisma.service';
-import { QueryOptimizerService } from '../database/query-optimizer.service';
-import { LanguageService } from '../i18n/services/language.service';
+
+import { DatabaseModule } from '../database/database.module';
+import { AppI18nModule } from '../i18n/i18n.module';
 
 @Module({
+  imports: [DatabaseModule, AppI18nModule],
   providers: [
+    UserService,
+    ProfileService,
+    UserAnalyticsService,
+    UserQueryService,
+    UserBulkService,
     UsersService,
-    // ✅ Provide both Prisma services for composition
-    PrismaService,
-    EnhancedPrismaService,
-    QueryOptimizerService,
-    LanguageService,
   ],
   controllers: [UsersController],
   exports: [
+    UserService,
+    ProfileService,
+    UserAnalyticsService,
+    UserQueryService,
+    UserBulkService,
     UsersService,
-    // ✅ Export services for use in other modules
-    PrismaService,
-    EnhancedPrismaService,
-    QueryOptimizerService,
   ],
 })
 export class UsersModule {}

@@ -1,20 +1,23 @@
+// src/auth/auth.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { ScheduleModule } from '@nestjs/schedule'; // FIXED: Added ScheduleModule import
-import { UsersModule } from 'src/users/users.module';
+import { ScheduleModule } from '@nestjs/schedule';
+
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthController } from './auth.controller';
-import { AppI18nModule } from 'src/i18n/i18n.module';
+
+import { UsersModule } from '../users/users.module';
+import { AppI18nModule } from '../i18n/i18n.module';
 
 @Module({
   imports: [
     UsersModule,
     PassportModule,
     AppI18nModule,
-    ScheduleModule.forRoot(), // FIXED: Added ScheduleModule for @Cron decorator
+    ScheduleModule.forRoot(),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({

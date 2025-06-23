@@ -1,4 +1,4 @@
-// src/i18n/services/language.service.ts - FIXED DETECTION SOURCES
+// src/i18n/services/language.service.ts - UPDATED WITH CHINESE SUPPORT
 import { Injectable, Logger } from '@nestjs/common';
 import {
   SupportedLanguage,
@@ -8,12 +8,11 @@ import {
   LANGUAGE_METADATA,
 } from '../constants/languages';
 
-// ✅ FIXED: Added missing userPreference property
 export interface LanguageDetectionSources {
   query?: string;
   header?: string;
   acceptLanguage?: string;
-  userPreference?: SupportedLanguage; // ✅ ADDED: Missing property
+  userPreference?: SupportedLanguage;
 }
 
 @Injectable()
@@ -21,7 +20,7 @@ export class LanguageService {
   private readonly logger = new Logger(LanguageService.name);
 
   constructor() {
-    this.logger.log('✅ LanguageService initialized');
+    this.logger.log('✅ LanguageService initialized with Chinese support');
   }
 
   /**
@@ -41,7 +40,26 @@ export class LanguageService {
       return upperLang as SupportedLanguage;
     }
 
-    return getDefaultLanguage();
+    // ✅ UPDATED: Enhanced mapping with Chinese variants
+    const langMapping: Record<string, SupportedLanguage> = {
+      EN: 'EN',
+      ENG: 'EN',
+      ENGLISH: 'EN',
+      ID: 'ID',
+      IND: 'ID',
+      INDONESIAN: 'ID',
+      IN: 'ID',
+      ZH: 'ZH',
+      CHI: 'ZH',
+      CHINESE: 'ZH',
+      CN: 'ZH',
+      'ZH-CN': 'ZH',
+      'ZH-TW': 'ZH',
+      'ZH-HANS': 'ZH',
+      'ZH-HANT': 'ZH',
+    };
+
+    return langMapping[upperLang] || getDefaultLanguage();
   }
 
   /**
@@ -51,6 +69,7 @@ export class LanguageService {
     const languageMapping = {
       EN: 'EN',
       ID: 'ID',
+      ZH: 'ZH', // ✅ ADDED Chinese mapping
     };
 
     return languageMapping[lang] || languageMapping['EN'];
@@ -63,6 +82,7 @@ export class LanguageService {
     const reverseMapping = {
       EN: 'EN' as SupportedLanguage,
       ID: 'ID' as SupportedLanguage,
+      ZH: 'ZH' as SupportedLanguage, // ✅ ADDED Chinese mapping
     };
 
     return reverseMapping[prismaLang] || 'EN';
@@ -114,15 +134,10 @@ export class LanguageService {
     params?: Record<string, any>,
   ): string {
     try {
-      // Validate language
       const validLang = this.validateLanguage(lang);
-
-      // Simple implementation for now
-      // In a real implementation, this would load from translation files
       let translation = this.getSimpleTranslation(key, validLang);
 
       if (!translation && validLang !== getDefaultLanguage()) {
-        // Fallback to default language
         translation = this.getSimpleTranslation(key, getDefaultLanguage());
       }
 
@@ -157,24 +172,20 @@ export class LanguageService {
   detectLanguageFromSources(
     sources: LanguageDetectionSources,
   ): SupportedLanguage {
-    // ✅ FIXED: Check userPreference first (if available)
     if (sources.userPreference) {
       return sources.userPreference;
     }
 
-    // Check query parameter
     if (sources.query) {
       const validLang = this.validateLanguage(sources.query);
       if (validLang) return validLang;
     }
 
-    // Check header
     if (sources.header) {
       const validLang = this.validateLanguage(sources.header);
       if (validLang) return validLang;
     }
 
-    // Check Accept-Language header
     if (sources.acceptLanguage) {
       return this.detectFromAcceptLanguage(sources.acceptLanguage);
     }
@@ -187,11 +198,10 @@ export class LanguageService {
    */
   detectFromAcceptLanguage(acceptLanguage: string): SupportedLanguage {
     try {
-      // Parse Accept-Language header (simplified)
       const languages = acceptLanguage
         .split(',')
         .map((lang) => lang.split(';')[0].trim().toUpperCase())
-        .map((lang) => lang.substring(0, 2)); // Get first 2 characters
+        .map((lang) => lang.substring(0, 2));
 
       for (const lang of languages) {
         const mappedLang = this.mapToSupportedLanguage(lang);
@@ -204,24 +214,6 @@ export class LanguageService {
     }
 
     return getDefaultLanguage();
-  }
-
-  /**
-   * Get cache statistics
-   */
-  getCacheStats() {
-    return {
-      size: 0,
-      hits: 0,
-      misses: 0,
-    };
-  }
-
-  /**
-   * Clear translation cache
-   */
-  clearCache(): void {
-    this.logger.log('Translation cache cleared');
   }
 
   /**
@@ -243,21 +235,12 @@ export class LanguageService {
   }
 
   /**
-   * Validate and convert language for database operations
-   */
-  validateAndConvertToPrisma(lang: string): string {
-    const validatedLang = this.validateLanguage(lang);
-    return this.supportedToPrisma(validatedLang);
-  }
-
-  /**
-   * Simple translation implementation
+   * ✅ UPDATED: Enhanced translation implementation with Chinese support
    */
   private getSimpleTranslation(
     key: string,
     lang: SupportedLanguage,
   ): string | null {
-    // Simple hardcoded translations for common keys
     const translations = {
       EN: {
         'common.messages.success': 'Success',
@@ -302,19 +285,44 @@ export class LanguageService {
         'users.messages.deleted': 'User berhasil dihapus',
         'users.messages.notFound': 'User tidak ditemukan',
       },
+      // ✅ ADDED: Chinese translations
+      ZH: {
+        'common.messages.success': '成功',
+        'common.messages.error': '发生错误',
+        'common.messages.notFound': '未找到数据',
+        'common.messages.badRequest': '无效请求',
+        'common.messages.internalError': '内部服务器错误',
+        'auth.messages.unauthorized': '未授权访问',
+        'auth.messages.forbidden': '访问被拒绝',
+        'auth.messages.invalidCredentials': '邮箱或密码无效',
+        'auth.messages.loginFailed': '登录失败',
+        'auth.messages.invalidToken': '无效或过期的令牌',
+        'auth.messages.logoutSuccess': '登出成功',
+        'auth.messages.logoutAllSuccess': '从所有设备登出成功',
+        'validation.password.mismatch': '密码确认不匹配',
+        'validation.email.alreadyExists': '邮箱已被注册',
+        'validation.messages.failed': '验证失败',
+        'users.messages.created': '用户创建成功',
+        'users.messages.updated': '用户更新成功',
+        'users.messages.deleted': '用户删除成功',
+        'users.messages.notFound': '未找到用户',
+      },
     };
 
     return translations[lang]?.[key] || null;
   }
 
   /**
-   * Map language code to supported language
+   * ✅ UPDATED: Enhanced language mapping with Chinese variants
    */
   private mapToSupportedLanguage(langCode: string): SupportedLanguage | null {
     const mapping = {
       EN: 'EN' as SupportedLanguage,
       ID: 'ID' as SupportedLanguage,
-      IN: 'ID' as SupportedLanguage, // Alternative for Indonesian
+      IN: 'ID' as SupportedLanguage,
+      ZH: 'ZH' as SupportedLanguage,
+      CN: 'ZH' as SupportedLanguage,
+      CHI: 'ZH' as SupportedLanguage,
     };
 
     return mapping[langCode.toUpperCase()] || null;
@@ -334,5 +342,31 @@ export class LanguageService {
     return translation.replace(/\{\{(\w+)\}\}/g, (match, key) => {
       return params[key]?.toString() || match;
     });
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats() {
+    return {
+      size: 0,
+      hits: 0,
+      misses: 0,
+    };
+  }
+
+  /**
+   * Clear translation cache
+   */
+  clearCache(): void {
+    this.logger.log('Translation cache cleared');
+  }
+
+  /**
+   * Validate and convert language for database operations
+   */
+  validateAndConvertToPrisma(lang: string): string {
+    const validatedLang = this.validateLanguage(lang);
+    return this.supportedToPrisma(validatedLang);
   }
 }

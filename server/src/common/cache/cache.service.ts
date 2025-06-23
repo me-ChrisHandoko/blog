@@ -15,10 +15,6 @@ export class CacheService {
     this.userCache.set(id, user);
   }
 
-  async invalidateUserCache(id: string): Promise<void> {
-    this.userCache.delete(id);
-  }
-
   getCacheStats() {
     return {
       user: this.userCache.getMetrics(),

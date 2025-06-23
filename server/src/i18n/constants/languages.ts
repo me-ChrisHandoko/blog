@@ -1,21 +1,24 @@
-// src/i18n/constants/languages.ts - FIXED MAPPING TYPES FINAL
-export type SupportedLanguage = 'EN' | 'ID';
+// src/i18n/constants/languages.ts - UPDATED WITH CHINESE SUPPORT
+export type SupportedLanguage = 'EN' | 'ID' | 'ZH';
 
-// ✅ ADDED: Array for @IsIn validation
+// ✅ UPDATED: Array with Chinese language
 export const SUPPORTED_LANGUAGES: readonly SupportedLanguage[] = [
   'EN',
   'ID',
+  'ZH',
 ] as const;
 
-// ✅ ADDED: Enum-like object for @IsEnum validation (alternative)
+// ✅ UPDATED: Enum-like object with Chinese
 export const SupportedLanguageEnum = {
   ENGLISH: 'EN',
   INDONESIAN: 'ID',
+  CHINESE: 'ZH',
 } as const;
 
-// ✅ Export individual constants for easier access
+// ✅ Export individual constants
 export const ENGLISH: SupportedLanguage = 'EN';
 export const INDONESIAN: SupportedLanguage = 'ID';
+export const CHINESE: SupportedLanguage = 'ZH';
 
 export function getDefaultLanguage(): SupportedLanguage {
   return ENGLISH;
@@ -29,6 +32,7 @@ export interface LanguageMetadata {
   flag: string;
 }
 
+// ✅ UPDATED: Language metadata with Chinese
 export const LANGUAGE_METADATA: Record<SupportedLanguage, LanguageMetadata> = {
   [ENGLISH]: {
     displayName: 'English',
@@ -44,6 +48,13 @@ export const LANGUAGE_METADATA: Record<SupportedLanguage, LanguageMetadata> = {
     code: 'id',
     flag: '🇮🇩',
   },
+  [CHINESE]: {
+    displayName: 'Chinese',
+    nativeName: '中文',
+    direction: 'ltr',
+    code: 'zh',
+    flag: '🇨🇳',
+  },
 };
 
 /**
@@ -52,7 +63,6 @@ export const LANGUAGE_METADATA: Record<SupportedLanguage, LanguageMetadata> = {
 export function mapLanguageCode(code: string): SupportedLanguage {
   const normalizedCode = code.toUpperCase();
 
-  // ✅ FIXED: Use explicit Record with string keys (not SupportedLanguage keys)
   const mapping: Record<string, SupportedLanguage> = {
     EN: ENGLISH,
     ENG: ENGLISH,
@@ -60,7 +70,13 @@ export function mapLanguageCode(code: string): SupportedLanguage {
     ID: INDONESIAN,
     IND: INDONESIAN,
     INDONESIAN: INDONESIAN,
-    IN: INDONESIAN, // Alternative
+    IN: INDONESIAN,
+    ZH: CHINESE,
+    CHI: CHINESE,
+    CHINESE: CHINESE,
+    CN: CHINESE,
+    'ZH-CN': CHINESE,
+    'ZH-TW': CHINESE,
   };
 
   return mapping[normalizedCode] || getDefaultLanguage();
@@ -96,10 +112,10 @@ export function validateLanguage(input: string): SupportedLanguage {
  * Convert SupportedLanguage to Prisma enum values
  */
 export function supportedToPrismaLanguage(lang: SupportedLanguage): string {
-  // ✅ FIXED: Use explicit object literal instead of Record type
   const mapping = {
     [ENGLISH]: 'EN',
     [INDONESIAN]: 'ID',
+    [CHINESE]: 'ZH',
   };
 
   return mapping[lang] || mapping[getDefaultLanguage()];
@@ -111,10 +127,10 @@ export function supportedToPrismaLanguage(lang: SupportedLanguage): string {
 export function prismaToSupportedLanguage(
   prismaLang: string,
 ): SupportedLanguage {
-  // ✅ FIXED: Use explicit Record with string keys
   const mapping: Record<string, SupportedLanguage> = {
     EN: ENGLISH,
     ID: INDONESIAN,
+    ZH: CHINESE,
   };
 
   return mapping[prismaLang] || getDefaultLanguage();

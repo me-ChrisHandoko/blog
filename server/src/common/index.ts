@@ -18,10 +18,6 @@ export * from './interceptors/logging.interceptor';
 export * from './interceptors/performance.interceptor';
 export * from './interceptors/request-id.interceptor';
 export * from './interceptors/error-response.interceptor';
-export * from './interceptors/timeout.interceptor';
-
-// Services
-export * from './services/multilingual-base.service';
 
 // Types
 export * from './types/api-response.types';

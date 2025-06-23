@@ -1,12 +1,16 @@
+// src/common/dto/translation-base.dto.ts - FIXED VERSION
 import {
-  IsEnum,
   IsString,
   IsOptional,
   MaxLength,
   MinLength,
+  IsIn, // ✅ CHANGED: Use IsIn instead of IsEnum
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { SupportedLanguage } from '../../i18n/constants/languages';
+import {
+  SupportedLanguage,
+  SUPPORTED_LANGUAGES,
+} from '../../i18n/constants/languages';
 
 /**
  * Base DTO untuk semua translation objects
@@ -15,7 +19,8 @@ import { SupportedLanguage } from '../../i18n/constants/languages';
  * sebaiknya extend dari class ini untuk consistency
  */
 export abstract class TranslationBaseDto {
-  @IsEnum(SupportedLanguage, {
+  // ✅ FIXED: Use @IsIn with array values instead of @IsEnum with type
+  @IsIn(SUPPORTED_LANGUAGES, {
     message: 'validation.language.unsupported',
   })
   language: SupportedLanguage;

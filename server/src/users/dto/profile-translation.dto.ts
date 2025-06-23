@@ -1,9 +1,13 @@
+// src/users/dto/profile-translation.dto.ts - FIXED VERSION
 import { IsString, IsOptional, MinLength, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { TranslationBaseDto } from '../../common/dto/translation-base.dto';
 
 /**
  * DTO untuk Profile Translation
+ *
+ * ✅ FIXED: Menggunakan TranslationBaseDto yang sudah diperbaiki
+ * dengan @IsIn(SUPPORTED_LANGUAGES) instead of @IsEnum(SupportedLanguage)
  */
 export class ProfileTranslationDto extends TranslationBaseDto {
   @IsString({ message: 'validation.name.required' })
@@ -27,7 +31,7 @@ export class ProfileTranslationDto extends TranslationBaseDto {
 
 /**
  * DTO untuk update profile translation
- * Semua field optional kecuali language
+ * Semua field optional kecuali language (inherited dari TranslationBaseDto)
  */
 export class UpdateProfileTranslationDto extends TranslationBaseDto {
   @IsOptional()

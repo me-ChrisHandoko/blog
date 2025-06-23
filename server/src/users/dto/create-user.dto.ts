@@ -1,17 +1,20 @@
-// src/users/dto/create-user.dto.ts - Fixed with missing imports
+// src/users/dto/create-user.dto.ts - FIXED VERSION
 import {
   IsEmail,
   IsString,
   MinLength,
-  MaxLength, // ADDED: Missing import
+  MaxLength,
   Matches,
   IsOptional,
-  IsEnum,
+  IsIn, // ✅ CHANGED: Use IsIn instead of IsEnum
   ValidateNested,
   IsArray,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { SupportedLanguage } from '../../i18n/constants/languages';
+import {
+  SupportedLanguage,
+  SUPPORTED_LANGUAGES,
+} from '../../i18n/constants/languages';
 import { ProfileTranslationDto } from './profile-translation.dto';
 
 /**
@@ -30,7 +33,8 @@ export class CreateUserDto {
   password: string;
 
   @IsOptional()
-  @IsEnum(SupportedLanguage, { message: 'validation.language.unsupported' })
+  // ✅ FIXED: Use @IsIn with array instead of @IsEnum with type
+  @IsIn(SUPPORTED_LANGUAGES, { message: 'validation.language.unsupported' })
   preferredLanguage?: SupportedLanguage;
 }
 

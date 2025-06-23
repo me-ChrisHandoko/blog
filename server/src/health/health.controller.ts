@@ -1,29 +1,56 @@
+// src/health/health.controller.ts - ENHANCED VERSION
 import { Controller, Get } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { EnhancedHealthService } from './enhanced-health.service';
+import { Public } from '../auth/decorators/public.decorator';
 
+@ApiTags('Health')
 @Controller('health')
 export class HealthController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly healthService: EnhancedHealthService) {}
 
+  /**
+   * Quick health check endpoint
+   */
+  @Public()
   @Get()
-  async healthCheck() {
-    try {
-      // Test database connection
-      await this.prisma.$queryRaw`SELECT 1`;
+  @ApiOperation({ summary: 'Quick health check' })
+  @ApiResponse({ status: 200, description: 'Service is healthy' })
+  @ApiResponse({ status: 503, description: 'Service is unhealthy' })
+  async quickHealth() {
+    return await this.healthService.getQuickHealthCheck();
+  }
 
-      return {
-        status: 'OK',
-        timestamp: new Date().toISOString(),
-        database: 'Connected',
-        uptime: process.uptime(),
-      };
-    } catch (error) {
-      return {
-        status: 'ERROR',
-        timestamp: new Date().toISOString(),
-        database: 'Disconnected',
-        error: error.message,
-      };
-    }
+  /**
+   * Comprehensive system health check
+   */
+  @Public()
+  @Get('detailed')
+  @ApiOperation({ summary: 'Detailed system health check' })
+  @ApiResponse({ status: 200, description: 'Detailed health information' })
+  async detailedHealth() {
+    return await this.healthService.getSystemHealthCheck();
+  }
+
+  /**
+   * Service metrics endpoint
+   */
+  @Public()
+  @Get('metrics')
+  @ApiOperation({ summary: 'Get service metrics' })
+  @ApiResponse({ status: 200, description: 'Service metrics' })
+  async getMetrics() {
+    return await this.healthService.getServiceMetrics();
+  }
+
+  /**
+   * Application information
+   */
+  @Public()
+  @Get('info')
+  @ApiOperation({ summary: 'Get application information' })
+  @ApiResponse({ status: 200, description: 'Application information' })
+  async getApplicationInfo() {
+    return this.healthService.getApplicationInfo();
   }
 }

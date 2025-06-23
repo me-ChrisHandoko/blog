@@ -1,4 +1,4 @@
-// src/database/health/database-health.service.ts
+// src/database/health/database-health.service.ts - FIXED WITH EXPLICIT TYPE HANDLING
 import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../core/database.service';
 
@@ -22,6 +22,18 @@ export interface HealthCheckResult {
     queryPerformance: string;
   };
   timestamp: string;
+}
+
+// ✅ ADDED: Proper type definitions for database query results
+interface MaxConnectionsQueryResult {
+  max_connections: number;
+}
+
+interface ConnectionStatsQueryResult {
+  total: number;
+  active: number;
+  idle: number;
+  idle_in_transaction: number;
 }
 
 @Injectable()
@@ -152,13 +164,20 @@ export class DatabaseHealthService {
    */
   private async getMaxConnections(): Promise<number> {
     try {
+      // ✅ FIXED: Use explicit type handling with proper casting
       const result = await this.databaseService.$queryRaw`
         SELECT setting::int as max_connections
         FROM pg_settings 
         WHERE name = 'max_connections'
       `;
 
-      return result[0]?.max_connections || 100;
+      // ✅ FIXED: Explicit type checking and casting
+      if (Array.isArray(result) && result.length > 0) {
+        const firstResult = result[0] as MaxConnectionsQueryResult;
+        return firstResult?.max_connections || 100;
+      }
+
+      return 100;
     } catch (error) {
       this.logger.warn(
         'Could not get max_connections from PostgreSQL:',
@@ -178,6 +197,7 @@ export class DatabaseHealthService {
     idleInTransaction: number;
   }> {
     try {
+      // ✅ FIXED: Use explicit type handling with proper casting
       const result = await this.databaseService.$queryRaw`
         SELECT 
           count(*)::int as total,
@@ -189,13 +209,18 @@ export class DatabaseHealthService {
           AND pid <> pg_backend_pid()
       `;
 
-      const stats = result[0];
-      return {
-        total: stats?.total || 0,
-        active: stats?.active || 0,
-        idle: stats?.idle || 0,
-        idleInTransaction: stats?.idle_in_transaction || 0,
-      };
+      // ✅ FIXED: Explicit type checking and casting
+      if (Array.isArray(result) && result.length > 0) {
+        const stats = result[0] as ConnectionStatsQueryResult;
+        return {
+          total: stats?.total || 0,
+          active: stats?.active || 0,
+          idle: stats?.idle || 0,
+          idleInTransaction: stats?.idle_in_transaction || 0,
+        };
+      }
+
+      return { total: 0, active: 0, idle: 0, idleInTransaction: 0 };
     } catch (error) {
       this.logger.warn(
         'Could not get connection stats from PostgreSQL:',
@@ -284,7 +309,6 @@ export class DatabaseHealthService {
     issues: string[];
   }> {
     const healthCheck = await this.performHealthCheck();
-    const config = this.databaseService.getConfig();
 
     const issues: string[] = [];
     let status: 'healthy' | 'degraded' | 'unhealthy';

@@ -1,9 +1,8 @@
+// src/auth/dto/auth.dto.ts - FIXED VERSION
 import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsString,
-  Matches,
-  MinLength,
   Validate,
   ValidationArguments,
   ValidatorConstraint,

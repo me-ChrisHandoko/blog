@@ -1,17 +1,16 @@
-// src/i18n/constants/languages.ts - ENHANCED WITH ENUM-LIKE CONSTANTS
+// src/i18n/constants/languages.ts - FIXED MAPPING TYPES FINAL
 export type SupportedLanguage = 'EN' | 'ID';
 
-// ✅ Array for iteration
+// ✅ ADDED: Array for @IsIn validation
 export const SUPPORTED_LANGUAGES: readonly SupportedLanguage[] = [
   'EN',
   'ID',
 ] as const;
 
-// ✅ Enum-like object for easy access (like SupportedLanguage.ENGLISH)
-export const Language = {
-  ENGLISH: 'EN' as const,
-  INDONESIAN: 'ID' as const,
-  // Add more as needed
+// ✅ ADDED: Enum-like object for @IsEnum validation (alternative)
+export const SupportedLanguageEnum = {
+  ENGLISH: 'EN',
+  INDONESIAN: 'ID',
 } as const;
 
 // ✅ Export individual constants for easier access
@@ -53,6 +52,7 @@ export const LANGUAGE_METADATA: Record<SupportedLanguage, LanguageMetadata> = {
 export function mapLanguageCode(code: string): SupportedLanguage {
   const normalizedCode = code.toUpperCase();
 
+  // ✅ FIXED: Use explicit Record with string keys (not SupportedLanguage keys)
   const mapping: Record<string, SupportedLanguage> = {
     EN: ENGLISH,
     ENG: ENGLISH,
@@ -96,9 +96,10 @@ export function validateLanguage(input: string): SupportedLanguage {
  * Convert SupportedLanguage to Prisma enum values
  */
 export function supportedToPrismaLanguage(lang: SupportedLanguage): string {
-  const mapping: Record<SupportedLanguage, string> = {
-    [ENGLISH]: 'ENGLISH',
-    [INDONESIAN]: 'INDONESIAN',
+  // ✅ FIXED: Use explicit object literal instead of Record type
+  const mapping = {
+    [ENGLISH]: 'EN',
+    [INDONESIAN]: 'ID',
   };
 
   return mapping[lang] || mapping[getDefaultLanguage()];
@@ -110,22 +111,11 @@ export function supportedToPrismaLanguage(lang: SupportedLanguage): string {
 export function prismaToSupportedLanguage(
   prismaLang: string,
 ): SupportedLanguage {
+  // ✅ FIXED: Use explicit Record with string keys
   const mapping: Record<string, SupportedLanguage> = {
-    ENGLISH: ENGLISH,
-    INDONESIAN: INDONESIAN,
+    EN: ENGLISH,
+    ID: INDONESIAN,
   };
 
   return mapping[prismaLang] || getDefaultLanguage();
 }
-
-// ✅ Helper object for scripts (backwards compatibility)
-export const LanguageConstants = {
-  ENGLISH,
-  INDONESIAN,
-  // Aliases for common usage patterns
-  EN: ENGLISH,
-  ID: INDONESIAN,
-} as const;
-
-// ✅ For scripts that expect enum-like behavior
-export const SupportedLanguageEnum = Language;

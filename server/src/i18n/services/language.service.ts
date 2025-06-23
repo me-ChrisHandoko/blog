@@ -1,4 +1,4 @@
-// src/i18n/services/language.service.ts - WITH PRISMA CONVERSION METHODS
+// src/i18n/services/language.service.ts - FIXED DETECTION SOURCES
 import { Injectable, Logger } from '@nestjs/common';
 import {
   SupportedLanguage,
@@ -8,10 +8,12 @@ import {
   LANGUAGE_METADATA,
 } from '../constants/languages';
 
+// ✅ FIXED: Added missing userPreference property
 export interface LanguageDetectionSources {
   query?: string;
   header?: string;
   acceptLanguage?: string;
+  userPreference?: SupportedLanguage; // ✅ ADDED: Missing property
 }
 
 @Injectable()
@@ -47,8 +49,8 @@ export class LanguageService {
    */
   supportedToPrisma(lang: SupportedLanguage): string {
     const languageMapping = {
-      EN: 'ENGLISH',
-      ID: 'INDONESIAN',
+      EN: 'EN',
+      ID: 'ID',
     };
 
     return languageMapping[lang] || languageMapping['EN'];
@@ -59,8 +61,8 @@ export class LanguageService {
    */
   prismaToSupported(prismaLang: string): SupportedLanguage {
     const reverseMapping = {
-      ENGLISH: 'EN' as SupportedLanguage,
-      INDONESIAN: 'ID' as SupportedLanguage,
+      EN: 'EN' as SupportedLanguage,
+      ID: 'ID' as SupportedLanguage,
     };
 
     return reverseMapping[prismaLang] || 'EN';
@@ -155,7 +157,12 @@ export class LanguageService {
   detectLanguageFromSources(
     sources: LanguageDetectionSources,
   ): SupportedLanguage {
-    // Check query parameter first
+    // ✅ FIXED: Check userPreference first (if available)
+    if (sources.userPreference) {
+      return sources.userPreference;
+    }
+
+    // Check query parameter
     if (sources.query) {
       const validLang = this.validateLanguage(sources.query);
       if (validLang) return validLang;
@@ -263,6 +270,8 @@ export class LanguageService {
         'auth.messages.invalidCredentials': 'Invalid credentials',
         'auth.messages.loginFailed': 'Login failed',
         'auth.messages.invalidToken': 'Invalid token',
+        'auth.messages.logoutSuccess': 'Logout successful',
+        'auth.messages.logoutAllSuccess': 'Logout from all devices successful',
         'validation.password.mismatch': 'Password confirmation does not match',
         'validation.email.alreadyExists': 'Email already exists',
         'validation.messages.failed': 'Validation failed',
@@ -282,6 +291,9 @@ export class LanguageService {
         'auth.messages.invalidCredentials': 'Kredensial tidak valid',
         'auth.messages.loginFailed': 'Login gagal',
         'auth.messages.invalidToken': 'Token tidak valid',
+        'auth.messages.logoutSuccess': 'Logout berhasil',
+        'auth.messages.logoutAllSuccess':
+          'Logout dari semua perangkat berhasil',
         'validation.password.mismatch': 'Konfirmasi password tidak cocok',
         'validation.email.alreadyExists': 'Email sudah ada',
         'validation.messages.failed': 'Validasi gagal',

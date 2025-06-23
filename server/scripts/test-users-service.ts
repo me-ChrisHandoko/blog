@@ -1,4 +1,4 @@
-// scripts/test-users-service.ts - FULLY COMPATIBLE VERSION
+// scripts/test-users-service.ts - FULLY COMPATIBLE VERSION - FIXED
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { UsersService } from '../src/users/users.service';
@@ -69,13 +69,16 @@ async function testUsersService() {
     );
     console.log('✅ User updated:', updatedUser.id);
 
-    // Test 6: Search users (check if method exists)
+    // Test 6: Search users (FIXED PARAMETER)
     console.log('\n📝 Test 6: Searching users...');
     try {
-      const searchResults = await usersService.searchUsers(
-        'test@example.com',
-        // ✅ Fixed: Remove extra parameter if not expected
-      );
+      // ✅ FIXED: Use correct object parameter structure
+      const searchResults = await usersService.searchUsers({
+        query: 'test@example.com',
+        page: 1,
+        limit: 10,
+        lang: 'EN' as SupportedLanguage,
+      });
       console.log(
         '✅ Search results:',
         searchResults.data?.length || 'Method works',
@@ -102,17 +105,13 @@ async function testUsersService() {
     // Test 8: Get user statistics (if available)
     console.log('\n📝 Test 8: Testing user statistics...');
     try {
-      // Try different method names that might exist
-      const userCount =
-        (await (usersService as any).getTotalUsers?.()) ||
-        (await (usersService as any).count?.()) ||
-        usersList.meta.total;
-      console.log('✅ User count:', userCount);
-    } catch (error) {
-      console.log(
-        'ℹ️ User count methods not available, using pagination total:',
-        usersList.meta.total,
+      // ✅ FIXED: Use correct method signature
+      const userStats = await usersService.getUserStats(
+        'EN' as SupportedLanguage,
       );
+      console.log('✅ User statistics:', userStats);
+    } catch (error) {
+      console.log('ℹ️ User stats method not available:', error.message);
     }
 
     // Test 9: Test user preferences (if available)
@@ -128,18 +127,19 @@ async function testUsersService() {
     // Test 10: List active users (if method exists)
     console.log('\n📝 Test 10: Testing filtering...');
     try {
-      // Try to filter users by active status
-      const activeUsersList = await usersService.findAll(
-        1,
-        10,
-        'EN' as SupportedLanguage,
-      );
-      const activeUsers = activeUsersList.data.filter(
-        (user: any) => user.isActive,
-      );
-      console.log('✅ Active users:', activeUsers.length);
+      // ✅ FIXED: Use correct findUsers method with filters
+      const activeUsersList = await usersService.findUsers({
+        page: 1,
+        limit: 10,
+        filters: { isActive: true },
+        lang: 'EN' as SupportedLanguage,
+      });
+      console.log('✅ Active users:', activeUsersList.data.length);
     } catch (error) {
-      console.log('ℹ️ Active user filtering handled differently');
+      console.log(
+        'ℹ️ Active user filtering handled differently:',
+        error.message,
+      );
     }
 
     // Test 11: Test validation (expect this to fail)
@@ -168,6 +168,29 @@ async function testUsersService() {
       );
     } catch (error) {
       console.log('✅ Duplicate email handling working:', error.message);
+    }
+
+    // Test 13: Test user by role (if available)
+    console.log('\n📝 Test 13: Testing find users by role...');
+    try {
+      const usersByRole = await usersService.findUsersByRole(
+        'USER',
+        1, // page
+        10, // limit
+        'EN' as SupportedLanguage,
+      );
+      console.log('✅ Users by role:', usersByRole.data.length);
+    } catch (error) {
+      console.log('ℹ️ Find by role method not available:', error.message);
+    }
+
+    // Test 14: Test user exists check (if available)
+    console.log('\n📝 Test 14: Testing user exists...');
+    try {
+      const exists = await usersService.exists(newUser.id);
+      console.log('✅ User exists check:', exists);
+    } catch (error) {
+      console.log('ℹ️ User exists method not available:', error.message);
     }
 
     // Cleanup
@@ -258,6 +281,76 @@ function demonstrateLanguageUsage() {
   console.log('Is "FR" valid?', isValidLanguage('FR'));
 }
 
+// ✅ ADDITIONAL TEST: Test enhanced search features
+async function testEnhancedSearch() {
+  console.log('\n🔍 Testing Enhanced Search Features...');
+
+  const app = await NestFactory.createApplicationContext(AppModule);
+
+  try {
+    const usersService = app.get(UsersService);
+
+    // Test advanced search with filters
+    console.log('\n📝 Testing advanced search with filters...');
+    try {
+      const searchResults = await usersService.searchUsers({
+        query: 'test',
+        page: 1,
+        limit: 5,
+        filters: {
+          isActive: true,
+          role: 'USER',
+        },
+        options: {
+          includeProfile: true,
+          sortBy: 'createdAt',
+          sortOrder: 'desc',
+        },
+        lang: 'EN' as SupportedLanguage,
+      });
+
+      console.log('✅ Advanced search results:', {
+        total: searchResults.meta?.total || 0,
+        returned: searchResults.data?.length || 0,
+      });
+    } catch (error) {
+      console.log('ℹ️ Advanced search not available:', error.message);
+    }
+
+    // Test getUserWithProfile
+    console.log('\n📝 Testing getUserWithProfile...');
+    try {
+      // First create a test user
+      const testUser = await usersService.create(
+        {
+          email: 'profile-test@example.com',
+          password: 'TestPassword123!',
+        },
+        'EN' as SupportedLanguage,
+      );
+
+      const userWithProfile = await usersService.getUserWithProfile(
+        testUser.id,
+        'EN' as SupportedLanguage,
+      );
+
+      console.log('✅ User with profile retrieved:', {
+        hasProfile: !!userWithProfile.profile,
+        userId: userWithProfile.id,
+      });
+
+      // Cleanup
+      await usersService.remove(testUser.id, 'EN' as SupportedLanguage);
+    } catch (error) {
+      console.log('ℹ️ getUserWithProfile not available:', error.message);
+    }
+  } catch (error) {
+    console.error('❌ Enhanced search test failed:', error);
+  } finally {
+    await app.close();
+  }
+}
+
 // Run the tests
 if (require.main === module) {
   console.log('🚀 Starting comprehensive user service tests...\n');
@@ -266,6 +359,7 @@ if (require.main === module) {
 
   inspectDTOStructure()
     .then(() => testUsersService())
+    .then(() => testEnhancedSearch())
     .then(() => {
       console.log('\n✅ All test scripts completed successfully');
       process.exit(0);
@@ -276,4 +370,4 @@ if (require.main === module) {
     });
 }
 
-export { testUsersService, inspectDTOStructure };
+export { testUsersService, inspectDTOStructure, testEnhancedSearch };

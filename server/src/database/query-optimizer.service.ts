@@ -1,8 +1,7 @@
-// src/database/query-optimizer.service.ts - FIXED WITH PROPER EXPORTS
+// src/database/query-optimizer.service.ts - FIXED COMPLETE VERSION
 import { Injectable, Logger } from '@nestjs/common';
-import { EnhancedPrismaService } from './enhanced-prisma.service';
+import { EnhancedDatabaseService } from './enhanced-database.service';
 import { SupportedLanguage } from '../i18n/constants/languages';
-import { LanguageConverter } from '../shared/utils/language-converter';
 
 // ✅ EXPORTED INTERFACES - Now properly accessible
 export interface QueryOptimizationConfig {
@@ -62,7 +61,7 @@ export class QueryOptimizerService {
     maxPageSize: 100,
   };
 
-  constructor(private prisma: EnhancedPrismaService) {}
+  constructor(private prisma: EnhancedDatabaseService) {}
 
   /**
    * ✅ FIXED: Optimized user queries dengan proper Prisma syntax
@@ -193,114 +192,6 @@ export class QueryOptimizerService {
       hasNext: sanitizedPage < totalPages,
       hasPrev: sanitizedPage > 1,
     };
-  }
-
-  /**
-   * ✅ FIXED: Bulk profile translation operations dengan proper error handling
-   */
-  async bulkUpsertProfileTranslations(
-    translations: Array<{
-      profileId: string;
-      language: string;
-      firstName: string;
-      lastName: string;
-      bio?: string;
-    }>,
-  ): Promise<any[]> {
-    if (!translations.length) return [];
-
-    // ✅ Validate data
-    const validTranslations = translations.filter(
-      (t) => t.profileId && t.language && t.firstName && t.lastName,
-    );
-
-    if (validTranslations.length !== translations.length) {
-      this.logger.warn(
-        `Filtered out ${translations.length - validTranslations.length} invalid translations`,
-      );
-    }
-
-    if (!this.config.enableBulkOperations || validTranslations.length <= 5) {
-      // ✅ Use individual operations untuk small datasets
-      return await this.prisma.$transaction(
-        validTranslations.map((t) =>
-          this.prisma.profileTranslation.upsert({
-            where: {
-              profileId_language: {
-                profileId: t.profileId,
-                language: t.language as any,
-              },
-            },
-            update: {
-              firstName: t.firstName,
-              lastName: t.lastName,
-              bio: t.bio,
-              updatedAt: new Date(),
-            },
-            create: {
-              profileId: t.profileId,
-              language: t.language as any,
-              firstName: t.firstName,
-              lastName: t.lastName,
-              bio: t.bio,
-            },
-          }),
-        ),
-      );
-    }
-
-    // ✅ Use enhanced bulk upsert untuk larger datasets
-    return await this.prisma.bulkUpsert(
-      'profileTranslation',
-      validTranslations,
-      ['profileId', 'language'],
-    );
-  }
-
-  /**
-   * ✅ FIXED: Cached user statistics dengan proper typing
-   */
-  async getUserStatsCached(
-    ttl: number = this.config.defaultCacheTTL,
-  ): Promise<UserStats> {
-    const cacheKey = 'user_stats_v1';
-
-    return await this.prisma.cachedQuery(
-      cacheKey,
-      async () => {
-        // ✅ FIXED: Use Prisma aggregations instead of raw SQL
-        const [totalUsers, activeUsers, verifiedUsers, recentlyActiveUsers] =
-          await Promise.all([
-            this.prisma.user.count({
-              where: { deletedAt: null },
-            }),
-            this.prisma.user.count({
-              where: { deletedAt: null, isActive: true },
-            }),
-            this.prisma.user.count({
-              where: { deletedAt: null, isVerified: true },
-            }),
-            this.prisma.user.count({
-              where: {
-                deletedAt: null,
-                lastLoginAt: {
-                  gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
-                },
-              },
-            }),
-          ]);
-
-        return {
-          total: totalUsers,
-          active: activeUsers,
-          verified: verifiedUsers,
-          inactive: totalUsers - activeUsers,
-          unverified: totalUsers - verifiedUsers,
-          recentlyActive: recentlyActiveUsers,
-        };
-      },
-      ttl,
-    );
   }
 
   /**
@@ -498,6 +389,114 @@ export class QueryOptimizerService {
       );
       return await this.searchUsersOptimized({ query, page, limit, lang });
     }
+  }
+
+  /**
+   * ✅ FIXED: Bulk profile translation operations dengan proper error handling
+   */
+  async bulkUpsertProfileTranslations(
+    translations: Array<{
+      profileId: string;
+      language: string;
+      firstName: string;
+      lastName: string;
+      bio?: string;
+    }>,
+  ): Promise<any[]> {
+    if (!translations.length) return [];
+
+    // ✅ Validate data
+    const validTranslations = translations.filter(
+      (t) => t.profileId && t.language && t.firstName && t.lastName,
+    );
+
+    if (validTranslations.length !== translations.length) {
+      this.logger.warn(
+        `Filtered out ${translations.length - validTranslations.length} invalid translations`,
+      );
+    }
+
+    if (!this.config.enableBulkOperations || validTranslations.length <= 5) {
+      // ✅ Use individual operations untuk small datasets
+      return await this.prisma.$transaction(
+        validTranslations.map((t) =>
+          this.prisma.profileTranslation.upsert({
+            where: {
+              profileId_language: {
+                profileId: t.profileId,
+                language: t.language as any,
+              },
+            },
+            update: {
+              firstName: t.firstName,
+              lastName: t.lastName,
+              bio: t.bio,
+              updatedAt: new Date(),
+            },
+            create: {
+              profileId: t.profileId,
+              language: t.language as any,
+              firstName: t.firstName,
+              lastName: t.lastName,
+              bio: t.bio,
+            },
+          }),
+        ),
+      );
+    }
+
+    // ✅ Use enhanced bulk upsert untuk larger datasets
+    return await this.prisma.bulkUpsert(
+      'profileTranslation',
+      validTranslations,
+      ['profileId', 'language'],
+    );
+  }
+
+  /**
+   * ✅ FIXED: Cached user statistics dengan proper typing
+   */
+  async getUserStatsCached(
+    ttl: number = this.config.defaultCacheTTL,
+  ): Promise<UserStats> {
+    const cacheKey = 'user_stats_v1';
+
+    return await this.prisma.cachedQuery(
+      cacheKey,
+      async () => {
+        // ✅ FIXED: Use Prisma aggregations instead of raw SQL
+        const [totalUsers, activeUsers, verifiedUsers, recentlyActiveUsers] =
+          await Promise.all([
+            this.prisma.user.count({
+              where: { deletedAt: null },
+            }),
+            this.prisma.user.count({
+              where: { deletedAt: null, isActive: true },
+            }),
+            this.prisma.user.count({
+              where: { deletedAt: null, isVerified: true },
+            }),
+            this.prisma.user.count({
+              where: {
+                deletedAt: null,
+                lastLoginAt: {
+                  gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
+                },
+              },
+            }),
+          ]);
+
+        return {
+          total: totalUsers,
+          active: activeUsers,
+          verified: verifiedUsers,
+          inactive: totalUsers - activeUsers,
+          unverified: totalUsers - verifiedUsers,
+          recentlyActive: recentlyActiveUsers,
+        };
+      },
+      ttl,
+    );
   }
 
   /**

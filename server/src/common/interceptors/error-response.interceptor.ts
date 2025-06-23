@@ -1,3 +1,4 @@
+// src/common/interceptors/error-response.interceptor.ts - PRODUCTION READY
 import {
   Injectable,
   NestInterceptor,
@@ -18,6 +19,7 @@ import {
 @Injectable()
 export class ErrorResponseInterceptor implements NestInterceptor {
   private readonly logger = new Logger(ErrorResponseInterceptor.name);
+  private readonly isProduction = process.env.NODE_ENV === 'production';
 
   constructor(private readonly languageService: LanguageService) {}
 
@@ -55,20 +57,17 @@ export class ErrorResponseInterceptor implements NestInterceptor {
             message = this.translateIfNeeded('common.messages.error', lang);
           }
 
-          // Create structured error response
-          const errorResponse = {
-            statusCode: status,
-            timestamp: new Date().toISOString(),
-            path: request.url,
-            method: request.method,
-            message,
-            error: this.getErrorName(status),
-          };
-
-          // IMPROVED: Different log levels for different types of errors
+          // Log for internal monitoring
           this.logError(status, message, request, error);
 
-          // Throw new exception with structured response
+          // ✅ PRODUCTION: Create clean, minimal response
+          const errorResponse = this.createErrorResponse(
+            status,
+            message,
+            request,
+            lang,
+          );
+
           throw new HttpException(errorResponse, status);
         }
 
@@ -77,43 +76,179 @@ export class ErrorResponseInterceptor implements NestInterceptor {
     );
   }
 
+  /**
+   * ✅ PRODUCTION: Create appropriate error response based on environment
+   */
+  private createErrorResponse(
+    status: number,
+    message: string | string[],
+    request: any,
+    lang: SupportedLanguage,
+  ): any {
+    // Base response (always included)
+    const baseResponse = {
+      success: false,
+      statusCode: status,
+      message,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (this.isProduction) {
+      // ✅ PRODUCTION: Minimal response for security
+      return {
+        ...baseResponse,
+        error: this.getSimpleErrorCode(status),
+        // Only include essential info in production
+        ...(this.shouldIncludeRequestInfo(status) && {
+          path: this.sanitizePath(request.url),
+        }),
+      };
+    } else {
+      // ✅ DEVELOPMENT: More detailed response for debugging
+      return {
+        ...baseResponse,
+        error: this.getDetailedErrorCode(status),
+        path: request.url,
+        method: request.method,
+        language: lang,
+        // Include helpful details only in development
+        ...(this.shouldIncludeDevDetails(status) && {
+          details: this.getDevDetails(status),
+        }),
+      };
+    }
+  }
+
+  /**
+   * ✅ PRODUCTION: Determine if request info should be included
+   */
+  private shouldIncludeRequestInfo(status: number): boolean {
+    // In production, only include path for client errors that benefit from it
+    return status === 404 || status === 400 || status === 422;
+  }
+
+  /**
+   * ✅ PRODUCTION: Sanitize path to remove sensitive params
+   */
+  private sanitizePath(path: string): string {
+    // Remove query parameters and sensitive path segments
+    const cleanPath = path.split('?')[0];
+
+    // Replace UUIDs and IDs with placeholders for privacy
+    return cleanPath
+      .replace(
+        /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+        '/:id',
+      )
+      .replace(/\/\d+/g, '/:id')
+      .replace(/\/[a-zA-Z0-9]{20,}/g, '/:token');
+  }
+
+  /**
+   * ✅ PRODUCTION: Simple error codes for production
+   */
+  private getSimpleErrorCode(status: number): string {
+    if (status >= 400 && status < 500) return 'CLIENT_ERROR';
+    if (status >= 500) return 'SERVER_ERROR';
+    return 'ERROR';
+  }
+
+  /**
+   * ✅ DEVELOPMENT: Detailed error codes for development
+   */
+  private getDetailedErrorCode(status: number): string {
+    const errorCodes = {
+      400: 'BAD_REQUEST',
+      401: 'UNAUTHORIZED',
+      403: 'FORBIDDEN',
+      404: 'NOT_FOUND',
+      409: 'CONFLICT',
+      422: 'VALIDATION_ERROR',
+      429: 'TOO_MANY_REQUESTS',
+      500: 'INTERNAL_SERVER_ERROR',
+    };
+    return errorCodes[status] || 'UNKNOWN_ERROR';
+  }
+
+  /**
+   * ✅ DEVELOPMENT: Should include development details
+   */
+  private shouldIncludeDevDetails(status: number): boolean {
+    return status === 400 || status === 422 || status === 500;
+  }
+
+  /**
+   * ✅ DEVELOPMENT: Development-only helpful details
+   */
+  private getDevDetails(status: number): any {
+    const devDetails = {
+      400: {
+        hint: 'Check request format and required fields',
+        docs: '/docs/api-reference',
+      },
+      422: {
+        hint: 'Validation failed - check field requirements',
+        docs: '/docs/validation-rules',
+      },
+      500: {
+        hint: 'Server error - check logs for details',
+        support: 'dev-team@company.com',
+      },
+    };
+    return devDetails[status];
+  }
+
+  /**
+   * ✅ IMPROVED: Smart logging based on environment and error type
+   */
   private logError(
     status: number,
     message: string | string[],
     request: any,
     error: Error,
   ) {
-    const logMessage = `${status} - ${JSON.stringify(message)} - ${request.method} ${request.url}`;
+    const logContext = {
+      statusCode: status,
+      method: request.method,
+      url: request.url,
+      userAgent: request.headers['user-agent']?.substring(0, 100),
+      ip: request.ip,
+      userId: request.user?.id,
+    };
 
-    if (this.isExpectedError(status)) {
-      // Expected business logic errors - log as INFO or WARN, not ERROR
-      if (this.isClientError(status)) {
-        this.logger.warn(`Client Error: ${logMessage}`);
-      } else {
-        this.logger.log(`Business Logic: ${logMessage}`);
+    if (this.isProduction) {
+      // ✅ PRODUCTION: Minimal logging for privacy
+      if (status >= 500) {
+        // Server errors - log for monitoring
+        this.logger.error(`Server Error: ${status}`, {
+          statusCode: status,
+          method: request.method,
+          path: this.sanitizePath(request.url),
+          errorType: error.name,
+          userId: request.user?.id,
+        });
+      } else if (status === 401 || status === 403) {
+        // Auth errors - minimal security logging
+        this.logger.warn(`Auth Error: ${status}`, {
+          statusCode: status,
+          ip: request.ip,
+          path: this.sanitizePath(request.url),
+        });
       }
+      // Don't log business logic errors (400, 409, 422) in production
     } else {
-      // Unexpected server errors - log as ERROR
-      this.logger.error(`Server Error: ${logMessage}`, error.stack);
+      // ✅ DEVELOPMENT: Detailed logging for debugging
+      const logMessage = `${status} - ${JSON.stringify(message)} - ${request.method} ${request.url}`;
+
+      if (status >= 500) {
+        this.logger.error(`Server Error: ${logMessage}`, {
+          ...logContext,
+          stack: error.stack,
+        });
+      } else if (status >= 400) {
+        this.logger.warn(`Client Error: ${logMessage}`, logContext);
+      }
     }
-  }
-
-  private isExpectedError(status: number): boolean {
-    // These are expected business logic errors, not system failures
-    const expectedStatuses = [
-      HttpStatus.BAD_REQUEST, // 400 - Validation errors
-      HttpStatus.UNAUTHORIZED, // 401 - Invalid credentials
-      HttpStatus.FORBIDDEN, // 403 - Permission denied
-      HttpStatus.NOT_FOUND, // 404 - Resource not found
-      HttpStatus.CONFLICT, // 409 - Email already exists, etc.
-      HttpStatus.UNPROCESSABLE_ENTITY, // 422 - Business rule violations
-    ];
-
-    return expectedStatuses.includes(status);
-  }
-
-  private isClientError(status: number): boolean {
-    return status >= 400 && status < 500;
   }
 
   private translateIfNeeded(text: string, lang: SupportedLanguage): string {
@@ -122,31 +257,11 @@ export class ErrorResponseInterceptor implements NestInterceptor {
       text.includes('.') &&
       (text.startsWith('validation.') ||
         text.startsWith('auth.') ||
-        text.startsWith('common.'))
+        text.startsWith('common.') ||
+        text.startsWith('users.'))
     ) {
       return this.languageService.translate(text, lang);
     }
     return text;
-  }
-
-  private getErrorName(status: number): string {
-    switch (status) {
-      case HttpStatus.BAD_REQUEST:
-        return 'Bad Request';
-      case HttpStatus.UNAUTHORIZED:
-        return 'Unauthorized';
-      case HttpStatus.FORBIDDEN:
-        return 'Forbidden';
-      case HttpStatus.NOT_FOUND:
-        return 'Not Found';
-      case HttpStatus.CONFLICT:
-        return 'Conflict';
-      case HttpStatus.UNPROCESSABLE_ENTITY:
-        return 'Unprocessable Entity';
-      case HttpStatus.INTERNAL_SERVER_ERROR:
-        return 'Internal Server Error';
-      default:
-        return 'Error';
-    }
   }
 }

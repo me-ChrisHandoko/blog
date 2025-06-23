@@ -1,4 +1,4 @@
-// src/users/services/user.service.ts - FIXED IMPORTS (if missing)
+// src/users/services/user.service.ts - CLEAN USER SERVICE ONLY
 import {
   Injectable,
   NotFoundException,
@@ -15,7 +15,6 @@ import {
 } from '../../i18n/constants/languages';
 import { SafeUser } from '../types/user.types';
 import { UserMapper } from '../../shared/mappers/user.mapper';
-import { LanguageConverter } from '../../shared/utils/language-converter';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -25,266 +24,342 @@ export class UserService {
     private readonly languageService: LanguageService,
   ) {}
 
-  // ... rest of the implementation stays the same as in the refactored version
-  // (This is just fixing the import issue)
-
+  /**
+   * Create a new user
+   */
   async create(
     createUserDto: CreateUserDto,
     lang: SupportedLanguage = getDefaultLanguage(),
   ): Promise<SafeUser> {
-    // Implementation here...
-    return {} as SafeUser; // Placeholder
+    // Check if email already exists
+    const existingUser = await this.database.user.findUnique({
+      where: { email: createUserDto.email.toLowerCase() },
+    });
+
+    if (existingUser) {
+      throw new ConflictException(
+        this.languageService.translate('users.messages.emailExists', lang),
+      );
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(createUserDto.password, 12);
+
+    // Create user
+    const user = await this.database.monitoredQuery(async () => {
+      return await this.database.user.create({
+        data: {
+          email: createUserDto.email.toLowerCase(),
+          password: hashedPassword,
+          preferredLanguage: createUserDto.preferredLanguage || 'EN',
+        },
+      });
+    }, 'create-user');
+
+    return UserMapper.toSafeUser(user);
   }
 
+  /**
+   * Find user by ID
+   */
   async findById(
     id: string,
     lang: SupportedLanguage = getDefaultLanguage(),
   ): Promise<SafeUser> {
-    // Implementation here...
-    return {} as SafeUser; // Placeholder
-  }
-
-  // Add other methods as needed...
-}
-
-// src/users/services/profile.service.ts - FIXED IMPORTS (if missing)
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
-import { EnhancedDatabaseService } from '../../database/enhanced-database.service';
-import { LanguageService } from '../../i18n/services/language.service';
-import { CreateUserWithProfileDto } from '../dto/create-user.dto';
-import { UpdateProfileTranslationDto } from '../dto/profile-translation.dto';
-import {
-  SupportedLanguage,
-  getDefaultLanguage,
-} from '../../i18n/constants/languages';
-import { UserWithProfile, CleanTranslation } from '../types/user.types';
-import { UserMapper } from '../../shared/mappers/user.mapper';
-import { LanguageConverter } from '../../shared/utils/language-converter';
-import { UserService } from './user.service';
-
-@Injectable()
-export class ProfileService {
-  constructor(
-    private readonly database: EnhancedDatabaseService,
-    private readonly languageService: LanguageService,
-    private readonly userService: UserService,
-  ) {}
-
-  // Implementation methods...
-  async createUserWithProfile(
-    createUserDto: CreateUserWithProfileDto,
-    lang: SupportedLanguage = getDefaultLanguage(),
-  ): Promise<UserWithProfile> {
-    // Implementation here...
-    return {} as UserWithProfile; // Placeholder
-  }
-
-  // Add other methods as needed...
-}
-
-// src/common/cache/cache.service.ts - FIXED IMPORTS (if missing)
-import { Injectable } from '@nestjs/common';
-import { LRUCache } from './lru-cache';
-import { SafeUser } from '../../users/types/user.types';
-
-@Injectable()
-export class CacheService {
-  private readonly userCache = new LRUCache<string, SafeUser>(1000);
-  private readonly translationCache = new LRUCache<string, string>(5000);
-
-  async getUserFromCache(id: string): Promise<SafeUser | null> {
-    return this.userCache.get(id) || null;
-  }
-
-  async setUserInCache(id: string, user: SafeUser): Promise<void> {
-    this.userCache.set(id, user);
-  }
-
-  async invalidateUserCache(id: string): Promise<void> {
-    this.userCache.delete(id);
-  }
-
-  getCacheStats() {
-    return {
-      user: this.userCache.getMetrics(),
-      translation: this.translationCache.getMetrics(),
-    };
-  }
-}
-
-// src/shared/mappers/user.mapper.ts - FIXED IMPORTS (if missing)
-import { User, Profile, ProfileTranslation, Language } from '@prisma/client';
-import {
-  SafeUser,
-  UserWithProfile,
-  CleanTranslation,
-} from '../../users/types/user.types';
-
-export class UserMapper {
-  /**
-   * Convert Prisma User to SafeUser (remove password)
-   */
-  static toSafeUser(prismaUser: User): SafeUser {
-    const { password, ...safeUser } = prismaUser;
-    return safeUser as SafeUser;
-  }
-
-  /**
-   * Convert ProfileTranslation to CleanTranslation
-   */
-  static toCleanTranslation(translation: ProfileTranslation): CleanTranslation {
-    return {
-      language: translation.language,
-      firstName: translation.firstName,
-      lastName: translation.lastName,
-      bio: translation.bio || undefined,
-    };
-  }
-
-  /**
-   * Convert Profile with translations to clean format
-   */
-  static toCleanProfile(
-    profile: Profile & { translations: ProfileTranslation[] },
-  ) {
-    return {
-      id: profile.id,
-      avatar: profile.avatar,
-      phone: profile.phone,
-      address: profile.address,
-      birthday: profile.birthday,
-      userId: profile.userId,
-      translations: profile.translations.map(this.toCleanTranslation),
-    };
-  }
-
-  /**
-   * Convert User with Profile to UserWithProfile
-   */
-  static toUserWithProfile(
-    user: User,
-    profile?: Profile & { translations: ProfileTranslation[] },
-  ): UserWithProfile {
-    const safeUser = this.toSafeUser(user);
-
-    if (profile) {
-      return {
-        ...safeUser,
-        profile: this.toCleanProfile(profile),
-      };
-    }
-
-    return safeUser;
-  }
-}
-
-// src/auth/strategies/jwt.strategy.ts - FIXED IMPORTS
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { PassportStrategy } from '@nestjs/passport';
-import { ExtractJwt, Strategy } from 'passport-jwt';
-import { ConfigService } from '@nestjs/config';
-import { UsersService } from '../../users/users.service';
-
-@Injectable()
-export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(
-    private configService: ConfigService,
-    private usersService: UsersService,
-  ) {
-    const jwtSecret = configService.get<string>('JWT_SECRET');
-
-    if (!jwtSecret) {
-      throw new Error('JWT_SECRET environment variable is required');
-    }
-    super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      ignoreExpiration: false,
-      secretOrKey: jwtSecret,
+    const user = await this.database.user.findUnique({
+      where: { id, deletedAt: null },
     });
-  }
 
-  async validate(payload: any) {
-    const user = await this.usersService.findOne(payload.sub);
-
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException('User not found or inactive');
+    if (!user) {
+      throw new NotFoundException(
+        this.languageService.translate('users.messages.notFound', lang),
+      );
     }
 
-    return {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      preferredLanguage: user.preferredLanguage,
-    };
+    return UserMapper.toSafeUser(user);
   }
-}
-
-// src/common/services/multilingual-base.service.ts - FIXED IMPORTS
-import { Injectable } from '@nestjs/common';
-import { EnhancedDatabaseService } from '../../database/enhanced-database.service';
-import { LanguageService } from '../../i18n/services/language.service';
-import { SupportedLanguage } from '../../i18n/constants/languages';
-
-/**
- * Abstract base service yang menyediakan fungsionalitas multilingual
- * untuk semua services yang membutuhkan dukungan multi-bahasa
- */
-@Injectable()
-export abstract class MultilingualBaseService {
-  constructor(
-    protected readonly prisma: EnhancedDatabaseService,
-    protected readonly languageService: LanguageService,
-  ) {}
 
   /**
-   * Mencari translation dengan fallback ke bahasa default
+   * Find user by email
    */
-  protected async findTranslationWithFallback<T>(
-    findTranslation: (language: string) => Promise<T | null>,
-    requestedLanguage: SupportedLanguage,
-  ): Promise<T | null> {
-    // Coba cari di bahasa yang diminta dulu
-    const requestedTranslation = await findTranslation(requestedLanguage);
-    if (requestedTranslation) {
-      return requestedTranslation;
+  async findByEmail(
+    email: string,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<SafeUser> {
+    const user = await this.database.user.findUnique({
+      where: { email: email.toLowerCase(), deletedAt: null },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        this.languageService.translate('users.messages.notFound', lang),
+      );
     }
 
-    // Jika tidak ketemu, coba bahasa default
-    const defaultLanguage = this.languageService.getDefaultLanguage();
-    if (defaultLanguage !== requestedLanguage) {
-      const fallbackTranslation = await findTranslation(defaultLanguage);
-      if (fallbackTranslation) {
-        return fallbackTranslation;
+    return UserMapper.toSafeUser(user);
+  }
+
+  /**
+   * Update user
+   */
+  async update(
+    id: string,
+    updateUserDto: UpdateUserDto,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<SafeUser> {
+    // Check if user exists
+    const existingUser = await this.database.user.findUnique({
+      where: { id, deletedAt: null },
+    });
+
+    if (!existingUser) {
+      throw new NotFoundException(
+        this.languageService.translate('users.messages.notFound', lang),
+      );
+    }
+
+    // Check email uniqueness if email is being updated
+    if (updateUserDto.email && updateUserDto.email !== existingUser.email) {
+      const emailExists = await this.database.user.findUnique({
+        where: { email: updateUserDto.email.toLowerCase() },
+      });
+
+      if (emailExists) {
+        throw new ConflictException(
+          this.languageService.translate('users.messages.emailExists', lang),
+        );
       }
     }
 
-    return null;
+    // Prepare update data
+    const updateData: any = {};
+
+    if (updateUserDto.email) {
+      updateData.email = updateUserDto.email.toLowerCase();
+    }
+
+    if (updateUserDto.password) {
+      updateData.password = await bcrypt.hash(updateUserDto.password, 12);
+    }
+
+    if (updateUserDto.isActive !== undefined) {
+      updateData.isActive = updateUserDto.isActive;
+    }
+
+    if (updateUserDto.isVerified !== undefined) {
+      updateData.isVerified = updateUserDto.isVerified;
+    }
+
+    if (updateUserDto.preferredLanguage) {
+      updateData.preferredLanguage = updateUserDto.preferredLanguage;
+    }
+
+    // Update user
+    const updatedUser = await this.database.monitoredQuery(async () => {
+      return await this.database.user.update({
+        where: { id },
+        data: updateData,
+      });
+    }, 'update-user');
+
+    return UserMapper.toSafeUser(updatedUser);
   }
 
-  // Add other helper methods as needed...
-}
+  /**
+   * Soft delete user
+   */
+  async softDelete(
+    id: string,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<void> {
+    const user = await this.database.user.findUnique({
+      where: { id, deletedAt: null },
+    });
 
-// Create missing package.json script (if needed)
-// package.json scripts section should include:
-/*
-{
-  "scripts": {
-    "build": "nest build",
-    "format": "prettier --write \"src/**\/*.ts\" \"test/**\/*.ts\"",
-    "start": "nest start",
-    "start:dev": "nest start --watch",
-    "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
-    "lint": "eslint \"{src,apps,libs,test}/**\/*.ts\" --fix",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
-    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./src/test/jest-e2e.json"
+    if (!user) {
+      throw new NotFoundException(
+        this.languageService.translate('users.messages.notFound', lang),
+      );
+    }
+
+    await this.database.monitoredQuery(async () => {
+      return await this.database.user.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(),
+          isActive: false,
+        },
+      });
+    }, 'soft-delete-user');
+  }
+
+  /**
+   * Restore soft deleted user
+   */
+  async restore(
+    id: string,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<SafeUser> {
+    const user = await this.database.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        this.languageService.translate('users.messages.notFound', lang),
+      );
+    }
+
+    if (!user.deletedAt) {
+      throw new BadRequestException(
+        this.languageService.translate('users.messages.notDeleted', lang),
+      );
+    }
+
+    const restoredUser = await this.database.monitoredQuery(async () => {
+      return await this.database.user.update({
+        where: { id },
+        data: {
+          deletedAt: null,
+          isActive: true,
+        },
+      });
+    }, 'restore-user');
+
+    return UserMapper.toSafeUser(restoredUser);
+  }
+
+  /**
+   * Update user's last login timestamp
+   */
+  async updateLastLogin(id: string): Promise<void> {
+    await this.database.monitoredQuery(async () => {
+      return await this.database.user.update({
+        where: { id },
+        data: { lastLoginAt: new Date() },
+      });
+    }, 'update-last-login');
+  }
+
+  /**
+   * Check if user exists
+   */
+  async exists(id: string): Promise<boolean> {
+    const user = await this.database.user.findUnique({
+      where: { id, deletedAt: null },
+      select: { id: true },
+    });
+
+    return !!user;
+  }
+
+  /**
+   * Get user count
+   */
+  async count(includeDeleted: boolean = false): Promise<number> {
+    return await this.database.user.count({
+      where: includeDeleted ? {} : { deletedAt: null },
+    });
+  }
+
+  /**
+   * Change user password
+   */
+  async changePassword(
+    id: string,
+    currentPassword: string,
+    newPassword: string,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<void> {
+    const user = await this.database.user.findUnique({
+      where: { id, deletedAt: null },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        this.languageService.translate('users.messages.notFound', lang),
+      );
+    }
+
+    // Verify current password
+    const isCurrentPasswordValid = await bcrypt.compare(
+      currentPassword,
+      user.password,
+    );
+
+    if (!isCurrentPasswordValid) {
+      throw new BadRequestException(
+        this.languageService.translate(
+          'auth.messages.invalidCredentials',
+          lang,
+        ),
+      );
+    }
+
+    // Hash new password
+    const hashedNewPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password
+    await this.database.monitoredQuery(async () => {
+      return await this.database.user.update({
+        where: { id },
+        data: { password: hashedNewPassword },
+      });
+    }, 'change-password');
+  }
+
+  /**
+   * Activate/Deactivate user
+   */
+  async toggleActivation(
+    id: string,
+    isActive: boolean,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<SafeUser> {
+    const user = await this.database.user.findUnique({
+      where: { id, deletedAt: null },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        this.languageService.translate('users.messages.notFound', lang),
+      );
+    }
+
+    const updatedUser = await this.database.monitoredQuery(async () => {
+      return await this.database.user.update({
+        where: { id },
+        data: { isActive },
+      });
+    }, 'toggle-user-activation');
+
+    return UserMapper.toSafeUser(updatedUser);
+  }
+
+  /**
+   * Verify user email
+   */
+  async verifyEmail(
+    id: string,
+    lang: SupportedLanguage = getDefaultLanguage(),
+  ): Promise<SafeUser> {
+    const user = await this.database.user.findUnique({
+      where: { id, deletedAt: null },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        this.languageService.translate('users.messages.notFound', lang),
+      );
+    }
+
+    const verifiedUser = await this.database.monitoredQuery(async () => {
+      return await this.database.user.update({
+        where: { id },
+        data: { isVerified: true },
+      });
+    }, 'verify-user-email');
+
+    return UserMapper.toSafeUser(verifiedUser);
   }
 }
-*/

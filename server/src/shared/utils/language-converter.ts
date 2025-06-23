@@ -6,32 +6,29 @@ export class LanguageConverter {
     SupportedLanguage,
     Language
   > = {
-    [SupportedLanguage.INDONESIAN]: Language.ID,
-    [SupportedLanguage.ENGLISH]: Language.EN,
-    [SupportedLanguage.CHINESE]: Language.ZH,
+    EN: Language.EN,
+    ID: Language.ID,
   };
 
-  private static readonly PRISMA_TO_SUPPORTED: Record<
-    Language,
-    SupportedLanguage
+  private static readonly PRISMA_TO_SUPPORTED: Partial<
+    Record<Language, SupportedLanguage>
   > = {
-    [Language.ID]: SupportedLanguage.INDONESIAN,
-    [Language.EN]: SupportedLanguage.ENGLISH,
-    [Language.ZH]: SupportedLanguage.CHINESE,
+    [Language.EN]: 'EN',
+    [Language.ID]: 'ID',
   };
 
   /**
    * Convert SupportedLanguage to Prisma Language enum
    */
   static toPrismaLanguage(supportedLang: SupportedLanguage): Language {
-    return this.SUPPORTED_TO_PRISMA[supportedLang] || Language.ID;
+    return this.SUPPORTED_TO_PRISMA[supportedLang] || Language.EN;
   }
 
   /**
    * Convert Prisma Language enum to SupportedLanguage
    */
   static fromPrismaLanguage(prismaLang: Language): SupportedLanguage {
-    return this.PRISMA_TO_SUPPORTED[prismaLang] || SupportedLanguage.INDONESIAN;
+    return this.PRISMA_TO_SUPPORTED[prismaLang] || 'EN';
   }
 
   /**

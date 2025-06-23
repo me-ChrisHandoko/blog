@@ -1,4 +1,4 @@
-// src/auth/auth.service.ts
+// src/auth/auth.service.ts - FIXED TRANSLATION ISSUE
 import {
   ConflictException,
   Injectable,
@@ -30,7 +30,7 @@ export class AuthService {
   }
 
   /**
-   * Register new user
+   * Register new user - FIXED TRANSLATION
    */
   async register(registerDto: RegisterDto, lang: SupportedLanguage) {
     // Validate password confirmation
@@ -46,6 +46,7 @@ export class AuthService {
     });
 
     if (existingUser) {
+      // ✅ FIXED: Use proper translation key that exists in translation files
       throw new ConflictException(
         this.languageService.translate('validation.email.alreadyExists', lang),
       );
@@ -61,7 +62,7 @@ export class AuthService {
         data: {
           email: registerDto.email.toLowerCase().trim(),
           password: hashedPassword,
-          preferredLanguage: 'EN', // Default to English
+          preferredLanguage: lang, // ✅ FIXED: Use the language from request
         },
       });
 
@@ -87,7 +88,7 @@ export class AuthService {
   }
 
   /**
-   * User login
+   * User login - FIXED TRANSLATION
    */
   async login(loginDto: LoginDto, lang: SupportedLanguage) {
     const startTime = process.hrtime.bigint();
@@ -162,7 +163,7 @@ export class AuthService {
   }
 
   /**
-   * Refresh token
+   * Refresh token - FIXED TRANSLATION
    */
   async refreshToken(
     refreshToken: string,

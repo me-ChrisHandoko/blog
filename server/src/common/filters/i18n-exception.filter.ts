@@ -1,4 +1,4 @@
-// src/common/filters/i18n-exception.filter.ts
+// src/common/filters/i18n-exception.filter.ts - CLEAN VERSION
 import {
   ExceptionFilter,
   Catch,
@@ -63,7 +63,7 @@ export class I18nExceptionFilter implements ExceptionFilter {
       this.logger.error('Unknown exception type:', exception);
     }
 
-    // Create standardized error response
+    // ✅ CLEAN: Standardized error response without technical details
     const errorResponse = {
       success: false,
       statusCode: status,
@@ -71,23 +71,78 @@ export class I18nExceptionFilter implements ExceptionFilter {
       message: message,
       timestamp: new Date().toISOString(),
       path: request.url,
+      method: request.method,
       language: language,
+      // ✅ CLEAN: Only include helpful details, not stack traces
+      ...(this.shouldIncludeHelpfulDetails(status) && {
+        details: this.getHelpfulDetails(status, errorCode),
+      }),
     };
 
-    // Add additional details in development
-    if (process.env.NODE_ENV === 'development') {
-      if (exception instanceof Error) {
-        errorResponse['details'] = {
-          name: exception.name,
-          stack: exception.stack,
-        };
-      }
-    }
-
-    // Log error details
+    // Log error details for monitoring
     this.logError(request, status, message, exception);
 
     response.status(status).send(errorResponse);
+  }
+
+  /**
+   * ✅ NEW: Get helpful details for users (not technical stack traces)
+   */
+  private getHelpfulDetails(status: number, errorCode: string): any {
+    const helpfulDetails: Record<string, any> = {
+      400: {
+        hint: 'Please check your request data and try again',
+        documentation: '/docs/api-errors#bad-request',
+      },
+      401: {
+        hint: 'Please login or provide a valid authentication token',
+        documentation: '/docs/authentication',
+      },
+      403: {
+        hint: 'You do not have permission to perform this action',
+        documentation: '/docs/permissions',
+      },
+      404: {
+        hint: 'The requested resource was not found',
+        documentation: '/docs/api-errors#not-found',
+      },
+      409: {
+        hint: 'This resource already exists or conflicts with existing data',
+        actions: [
+          'Try with different data',
+          'Check if resource already exists',
+        ],
+      },
+      422: {
+        hint: 'Please check your input data format and try again',
+        documentation: '/docs/validation-rules',
+      },
+      429: {
+        hint: 'You are making too many requests. Please wait and try again',
+        retryAfter: '60 seconds',
+      },
+      500: {
+        hint: 'A server error occurred. Please try again later',
+        supportContact: 'support@example.com',
+      },
+    };
+
+    return (
+      helpfulDetails[status] || {
+        hint: 'An error occurred. Please try again or contact support',
+      }
+    );
+  }
+
+  /**
+   * ✅ NEW: Determine when to include helpful details
+   */
+  private shouldIncludeHelpfulDetails(status: number): boolean {
+    // Include helpful details for client errors and some server errors
+    return (
+      (status >= 400 && status < 500) || // Client errors
+      status === 500 // Internal server error
+    );
   }
 
   /**
@@ -128,6 +183,8 @@ export class I18nExceptionFilter implements ExceptionFilter {
       'Internal Server Error': 'common.messages.internalError',
       'Validation failed': 'validation.messages.failed',
       'Invalid credentials': 'auth.messages.invalidCredentials',
+      'Email already exists': 'validation.email.alreadyExists',
+      'Email is already registered': 'validation.email.alreadyExists',
     };
 
     const errorKey = commonErrorKeys[message];
@@ -164,7 +221,7 @@ export class I18nExceptionFilter implements ExceptionFilter {
   }
 
   /**
-   * Log error details
+   * ✅ IMPROVED: Smart logging based on error severity
    */
   private logError(
     request: FastifyRequest,
@@ -176,17 +233,37 @@ export class I18nExceptionFilter implements ExceptionFilter {
     const userAgent = request.headers['user-agent'] || '';
     const ip = request.ip || 'unknown';
 
+    const baseLog = {
+      method,
+      url,
+      status,
+      ip,
+      userAgent: userAgent.substring(0, 100),
+    };
+
     if (status >= 500) {
-      this.logger.error(`${method} ${url} ${status} - ${message}`, {
+      // Server errors - full logging
+      this.logger.error(
+        `Server Error: ${method} ${url} ${status} - ${message}`,
+        {
+          ...baseLog,
+          exception: exception instanceof Error ? exception.stack : exception,
+        },
+      );
+    } else if (status === 401 || status === 403) {
+      // Auth errors - minimal logging (no sensitive data)
+      this.logger.warn(`Auth Error: ${method} ${url} ${status}`, {
+        method,
+        url,
+        status,
         ip,
-        userAgent,
-        exception: exception instanceof Error ? exception.stack : exception,
       });
     } else if (status >= 400) {
-      this.logger.warn(`${method} ${url} ${status} - ${message}`, {
-        ip,
-        userAgent,
-      });
+      // Other client errors - moderate logging
+      this.logger.warn(
+        `Client Error: ${method} ${url} ${status} - ${message}`,
+        baseLog,
+      );
     }
   }
 }

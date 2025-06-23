@@ -1,4 +1,4 @@
-// src/users/types/user.types.ts - NEW FILE
+// src/users/types/user.types.ts - UPDATED WITH MISSING PROPERTY
 import { User, Profile, Language } from '@prisma/client';
 
 /**
@@ -68,7 +68,7 @@ export type PrismaProfileWithTranslations = Profile & {
 };
 
 /**
- * User statistics response
+ * User statistics response - FIXED WITH MISSING PROPERTY
  */
 export type UserStats = {
   total: number;
@@ -76,6 +76,7 @@ export type UserStats = {
   verified: number;
   inactive: number;
   unverified: number;
+  recentlyActive: number; // ✅ ADDED: Missing property that was causing error
 };
 
 /**

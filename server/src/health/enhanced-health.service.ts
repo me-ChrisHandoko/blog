@@ -156,7 +156,7 @@ export class EnhancedHealthService {
     const startTime = Date.now();
 
     try {
-      const healthCheck = await this.database.healthCheck();
+      const healthCheck = await this.database.performHealthCheck();
       const responseTime = Date.now() - startTime;
 
       if (healthCheck.healthy) {

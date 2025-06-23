@@ -5,7 +5,7 @@ import { UserService } from './services/user.service';
 import { ProfileService } from './services/profile.service';
 import { UserAnalyticsService } from './services/user-analytics.service';
 import { UserQueryService } from './services/user-query.service';
-import { UserBulkService } from './services/user-bulk.service';
+// import { UserBulkService } from './services/user-bulk.service';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 
@@ -19,7 +19,7 @@ import { AppI18nModule } from '../i18n/i18n.module';
     ProfileService,
     UserAnalyticsService,
     UserQueryService,
-    UserBulkService,
+    // UserBulkService,
     UsersService,
   ],
   controllers: [UsersController],
@@ -28,7 +28,7 @@ import { AppI18nModule } from '../i18n/i18n.module';
     ProfileService,
     UserAnalyticsService,
     UserQueryService,
-    UserBulkService,
+    // UserBulkService,
     UsersService,
   ],
 })

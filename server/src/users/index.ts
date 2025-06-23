@@ -9,7 +9,7 @@ export { UserService } from './services/user.service';
 export { ProfileService } from './services/profile.service';
 export { UserAnalyticsService } from './services/user-analytics.service';
 export { UserQueryService } from './services/user-query.service';
-export { UserBulkService } from './services/user-bulk.service';
+// export { UserBulkService } from './services/user-bulk.service';
 
 // DTOs
 export * from './dto/create-user.dto';

@@ -1,3 +1,4 @@
+// src/database/prisma.service.ts - FIXED VERSION
 import {
   Injectable,
   OnModuleInit,
@@ -11,47 +12,58 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
-  private readonly logger = new Logger(PrismaService.name);
+  // ✅ FIXED: Change from private to protected to allow inheritance
+  protected readonly logger = new Logger(PrismaService.name);
 
   constructor() {
     super({
-      log: ['query', 'info', 'warn', 'error'],
-      errorFormat: 'pretty', // Better error formatting for development
+      log: ['warn', 'error'],
+      errorFormat: 'pretty',
     });
   }
 
-  async onModuleInit(): Promise<void> {
+  async onModuleInit() {
     try {
-      // Explicit type annotation resolves the TypeScript warning
       await this.$connect();
       this.logger.log('✅ Database connected successfully');
-
-      // Optional: Test the connection with a simple query
-      await this.$queryRaw`SELECT 1`;
-      this.logger.log('✅ Database connection verified');
     } catch (error) {
       this.logger.error('❌ Failed to connect to database:', error);
-      // In production, you might want to throw the error to prevent app startup
       throw error;
     }
   }
 
-  async onModuleDestroy(): Promise<void> {
+  async onModuleDestroy() {
     try {
       await this.$disconnect();
-      this.logger.log('✅ Database disconnected gracefully');
+      this.logger.log('✅ Database disconnected successfully');
     } catch (error) {
       this.logger.error('❌ Error during database disconnection:', error);
     }
   }
 
-  // Helper method for health checks and connection testing
+  /**
+   * ✅ Health check method untuk compatibility
+   */
   async isHealthy(): Promise<boolean> {
     try {
       await this.$queryRaw`SELECT 1`;
       return true;
-    } catch {
+    } catch (error) {
+      this.logger.error('Health check failed:', error);
       return false;
     }
+  }
+
+  /**
+   * ✅ Basic query stats (for compatibility)
+   */
+  getQueryStats() {
+    return {
+      totalQueries: 0,
+      slowQueries: 0,
+      averageQueryTime: 0,
+      slowQueryRatio: '0%',
+      queriesPerSecond: 0,
+    };
   }
 }

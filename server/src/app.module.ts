@@ -1,4 +1,4 @@
-// src/app.module.ts - UPDATED: Simplified without duplicate EnvConfig initialization
+// src/app.module.ts - KEY UPDATES
 import { Module, Type, OnModuleInit } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -14,6 +14,11 @@ import {
   envValidationSchema,
   EnvironmentVariables,
 } from './config/env.validation';
+
+// ✅ Import enhanced database services
+import { EnhancedPrismaService } from './database/enhanced-prisma.service';
+import { QueryOptimizerService } from './database/query-optimizer.service';
+import { PrismaService } from './database/prisma.service';
 
 function getConditionalModules(): Type<any>[] {
   const modules: Type<any>[] = [];
@@ -66,20 +71,32 @@ function getConditionalModules(): Type<any>[] {
     ...getConditionalModules(),
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // ✅ UPDATED: Provide enhanced database services globally
+    {
+      provide: PrismaService,
+      useClass: EnhancedPrismaService,
+    },
+    EnhancedPrismaService,
+    QueryOptimizerService,
+  ],
+  // ✅ Export enhanced services for other modules
+  exports: [EnhancedPrismaService, QueryOptimizerService],
 })
 export class AppModule implements OnModuleInit {
-  constructor(private configService: ConfigService<EnvironmentVariables>) {}
+  constructor(
+    private configService: ConfigService<EnvironmentVariables>,
+    private enhancedPrisma: EnhancedPrismaService, // ✅ Use enhanced service
+  ) {}
 
   onModuleInit() {
-    // REMOVED: EnvConfig initialization - now handled in main.ts
-    // The onModuleInit is called AFTER main.ts bootstrap, so we can't initialize here
-
     const env = process.env.NODE_ENV || 'development';
     const port = process.env.PORT || 3001;
 
     console.log(`🏗️  AppModule initialized in ${env} mode`);
     console.log(`📦 All modules loaded successfully`);
+    console.log(`🚀 Enhanced database services activated`);
 
     // Only log basic info here since detailed logging happens in main.ts
     if (env === 'development') {
@@ -88,6 +105,8 @@ export class AppModule implements OnModuleInit {
       console.log('   - Test endpoints');
       console.log('   - Detailed logging');
       console.log('   - Scheduled task monitoring');
+      console.log('   - Query performance monitoring');
+      console.log('   - Database connection pooling');
     }
   }
 }

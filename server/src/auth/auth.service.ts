@@ -1,4 +1,4 @@
-// src/auth/auth.service.ts - FIXED: Import and scheduling issues resolved
+// src/auth/auth.service.ts - SIMPLIFIED VERSION
 import {
   ConflictException,
   Injectable,
@@ -7,87 +7,37 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Cron } from '@nestjs/schedule'; // FIXED: Added missing import
 import { PrismaService } from 'src/database/prisma.service';
-import { UsersService } from 'src/users/users.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import {
-  getDefaultLanguage,
   SupportedLanguage,
+  getDefaultLanguage,
 } from 'src/i18n/constants/languages';
 import * as bcrypt from 'bcryptjs';
 import { LanguageService } from 'src/i18n/services/language.service';
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name); // FIXED: Added logger
+  private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    private usersService: UsersService,
     private jwtService: JwtService,
     private configService: ConfigService,
-    private prisma: PrismaService,
-    private languageService: LanguageService,
-  ) {}
-
-  @Cron('0 0 * * *') // FIXED: Correct cron syntax (daily cleanup at midnight)
-  async cleanupExpiredSessions() {
-    try {
-      const deleted = await this.prisma.session.deleteMany({
-        where: {
-          OR: [
-            { expiresAt: { lt: new Date() } },
-            {
-              isActive: false,
-              updatedAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-            },
-          ],
-        },
-      });
-
-      this.logger.log(`🧹 Cleaned up ${deleted.count} expired sessions`);
-    } catch (error) {
-      this.logger.error('Failed to cleanup expired sessions:', error);
-    }
+    private readonly prisma: PrismaService,
+    private readonly languageService: LanguageService,
+  ) {
+    console.log('🔐 AuthService initialized');
   }
 
-  async getSessionAnalytics(userId: string) {
-    return this.prisma.session.groupBy({
-      by: ['userAgent'],
-      where: { userId, isActive: true },
-      _count: true,
-    });
-  }
-
-  async getActiveSessions(userId: string) {
-    return this.prisma.session.findMany({
-      where: { userId, isActive: true },
-      select: {
-        id: true,
-        userAgent: true,
-        ipAddress: true,
-        createdAt: true,
-        expiresAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  async terminateSession(userId: string, sessionId: string) {
-    return this.prisma.session.update({
-      where: { id: sessionId, userId },
-      data: { isActive: false },
-    });
-  }
-
+  /**
+   * Register new user
+   */
   async register(registerDto: RegisterDto, lang: SupportedLanguage) {
     // Validate password confirmation
     if (registerDto.password !== registerDto.confirmPassword) {
-      const message = this.languageService.translate(
-        'validation.password.mismatch',
-        lang,
+      throw new ConflictException(
+        this.languageService.translate('validation.password.mismatch', lang),
       );
-      throw new ConflictException(message);
     }
 
     // Check if user already exists
@@ -96,71 +46,76 @@ export class AuthService {
     });
 
     if (existingUser) {
-      const message = this.languageService.translate(
-        'validation.email.alreadyExists',
-        lang,
+      throw new ConflictException(
+        this.languageService.translate('validation.email.alreadyExists', lang),
       );
-      throw new ConflictException(message);
     }
 
-    // Create user
-    const user = await this.usersService.create(
-      {
-        email: registerDto.email,
-        password: registerDto.password,
-        preferredLanguage: lang,
-      },
-      lang,
-    );
+    // Hash password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(registerDto.password, saltRounds);
 
-    // Generate tokens
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
+    try {
+      // Create user
+      const user = await this.prisma.user.create({
+        data: {
+          email: registerDto.email.toLowerCase().trim(),
+          password: hashedPassword,
+          preferredLanguage: 'EN', // Default to English
+        },
+      });
 
-    // Save refresh token
-    await this.saveRefreshToken(user.id, tokens.refreshToken);
+      // Generate tokens
+      const tokens = await this.generateTokens(user.id, user.email, user.role);
 
-    return {
-      user: this.sanitizeUser(user),
-      ...tokens,
-    };
+      // Save refresh token
+      await this.saveRefreshToken(user.id, tokens.refreshToken);
+
+      // Return safe user data
+      const { password, ...safeUser } = user;
+
+      return {
+        user: safeUser,
+        ...tokens,
+      };
+    } catch (error) {
+      this.logger.error('Registration failed:', error);
+      throw new ConflictException(
+        this.languageService.translate('common.messages.error', lang),
+      );
+    }
   }
 
   /**
-   * FIXED: Login method with timing attack prevention
+   * User login
    */
   async login(loginDto: LoginDto, lang: SupportedLanguage) {
-    // SECURITY: Always perform the same operations regardless of user existence
-    // This prevents timing attacks that could reveal valid email addresses
-
     const startTime = process.hrtime.bigint();
 
-    // Step 1: Always fetch user (even if not exists)
+    // Fetch user
     const user = await this.prisma.user.findUnique({
       where: { email: loginDto.email.toLowerCase() },
     });
 
-    // Step 2: Always perform password comparison (prevent timing differences)
+    // Password comparison (always perform to prevent timing attacks)
     let isValidCredentials = false;
 
     if (user) {
-      // Real password comparison
       isValidCredentials = await bcrypt.compare(
         loginDto.password,
         user.password,
       );
     } else {
-      // SECURITY: Dummy password comparison with same computational cost
-      // This ensures consistent timing whether user exists or not
+      // Dummy comparison
       await bcrypt.compare(
         loginDto.password,
         '$2a$12$dummyhashtopreventtimingattacks',
       );
-      isValidCredentials = false;
     }
 
-    // Step 3: Add consistent delay to normalize response time
-    const minExecutionTime = 100; // 100ms minimum execution time
-    const elapsedTime = Number(process.hrtime.bigint() - startTime) / 1_000_000; // Convert to ms
+    // Add consistent delay
+    const minExecutionTime = 100; // 100ms
+    const elapsedTime = Number(process.hrtime.bigint() - startTime) / 1_000_000;
 
     if (elapsedTime < minExecutionTime) {
       await new Promise((resolve) =>
@@ -168,23 +123,18 @@ export class AuthService {
       );
     }
 
-    // Step 4: Single validation check with generic error message
+    // Validate credentials
     if (!user || !isValidCredentials || !user.isActive) {
-      // SECURITY: Same error message for all failure cases
-      // - User doesn't exist
-      // - Wrong password
-      // - User inactive
-      // This prevents user enumeration attacks
-      const message = this.languageService.translate(
-        'auth.messages.invalidCredentials',
-        lang,
+      throw new UnauthorizedException(
+        this.languageService.translate(
+          'auth.messages.invalidCredentials',
+          lang,
+        ),
       );
-      throw new UnauthorizedException(message);
     }
 
-    // Step 5: Successful login processing
     try {
-      // Update last login timestamp
+      // Update last login
       await this.prisma.user.update({
         where: { id: user.id },
         data: { lastLoginAt: new Date() },
@@ -196,20 +146,24 @@ export class AuthService {
       // Save refresh token
       await this.saveRefreshToken(user.id, tokens.refreshToken);
 
+      // Return safe user data
+      const { password, ...safeUser } = user;
+
       return {
-        user: this.sanitizeUser(user),
+        user: safeUser,
         ...tokens,
       };
     } catch (error) {
-      // Generic error for any unexpected issues
-      const message = this.languageService.translate(
-        'auth.messages.loginFailed',
-        lang,
+      this.logger.error('Login failed:', error);
+      throw new UnauthorizedException(
+        this.languageService.translate('auth.messages.loginFailed', lang),
       );
-      throw new UnauthorizedException(message);
     }
   }
 
+  /**
+   * Refresh token
+   */
   async refreshToken(
     refreshToken: string,
     lang: SupportedLanguage = getDefaultLanguage(),
@@ -233,11 +187,9 @@ export class AuthService {
       });
 
       if (!session) {
-        const message = this.languageService.translate(
-          'auth.messages.invalidToken',
-          lang,
+        throw new UnauthorizedException(
+          this.languageService.translate('auth.messages.invalidToken', lang),
         );
-        throw new UnauthorizedException(message);
       }
 
       // Generate new tokens
@@ -255,14 +207,15 @@ export class AuthService {
 
       return tokens;
     } catch (error) {
-      const message = this.languageService.translate(
-        'auth.messages.invalidToken',
-        lang,
+      throw new UnauthorizedException(
+        this.languageService.translate('auth.messages.invalidToken', lang),
       );
-      throw new UnauthorizedException(message);
     }
   }
 
+  /**
+   * Logout user
+   */
   async logout(userId: string, refreshToken?: string) {
     if (refreshToken) {
       await this.prisma.session.updateMany({
@@ -278,34 +231,33 @@ export class AuthService {
     }
   }
 
-  getLocalizedMessage(
-    key: string,
-    lang: SupportedLanguage = getDefaultLanguage(),
-  ): string {
-    return this.languageService.translate(key, lang);
-  }
-
+  /**
+   * Generate JWT tokens
+   */
   private async generateTokens(userId: string, email: string, role: string) {
     const payload = { email, sub: userId, role };
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        expiresIn: this.configService.get('JWT_EXPIRES_IN'),
+        expiresIn: this.configService.get('JWT_EXPIRES_IN') || '15m',
       }),
       this.jwtService.signAsync(payload, {
         secret: this.configService.get('JWT_REFRESH_SECRET'),
-        expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN'),
+        expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN') || '7d',
       }),
     ]);
 
     return {
       accessToken,
       refreshToken,
-      tokenType: 'Bearer',
-      expiresIn: this.configService.get('JWT_EXPIRES_IN'),
+      tokenType: 'Bearer' as const,
+      expiresIn: this.configService.get('JWT_EXPIRES_IN') || '15m',
     };
   }
 
+  /**
+   * Save refresh token to database
+   */
   private async saveRefreshToken(userId: string, refreshToken: string) {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
@@ -318,10 +270,5 @@ export class AuthService {
         isActive: true,
       },
     });
-  }
-
-  private sanitizeUser(user: any) {
-    const { password, ...sanitized } = user;
-    return sanitized;
   }
 }

@@ -1,3 +1,4 @@
+// src/auth/auth.controller.ts - FIXED VERSION
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
@@ -5,10 +6,14 @@ import { LoginDto, RefreshTokenDto, RegisterDto } from './dto/auth.dto';
 import { CurrentLanguage } from 'src/i18n/decorators/current-language.decorator';
 import { SupportedLanguage } from 'src/i18n/constants/languages';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { LanguageService } from 'src/i18n/services/language.service'; // ✅ ADDED
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly languageService: LanguageService, // ✅ ADDED
+  ) {}
 
   @Public()
   @Post('register')
@@ -35,24 +40,25 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async refreshToken(
     @Body() refreshTokenDto: RefreshTokenDto,
-    @CurrentLanguage() lang: SupportedLanguage, // ADDED: Missing lang parameter
+    @CurrentLanguage() lang: SupportedLanguage,
   ) {
-    return this.authService.refreshToken(refreshTokenDto.refreshToken, lang); // FIXED: Added lang parameter
+    return this.authService.refreshToken(refreshTokenDto.refreshToken, lang);
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(
     @CurrentUser('id') userId: string,
-    @CurrentLanguage() lang: SupportedLanguage, // ADDED: For consistent error messages
+    @CurrentLanguage() lang: SupportedLanguage,
     @Body('refreshToken') refreshToken?: string,
   ) {
     await this.authService.logout(userId, refreshToken);
     return {
-      message: this.authService.getLocalizedMessage(
+      // ✅ FIXED: Use languageService.translate instead of authService.getLocalizedMessage
+      message: this.languageService.translate(
         'auth.messages.logoutSuccess',
         lang,
-      ), // IMPROVED: Localized message
+      ),
     };
   }
 
@@ -60,14 +66,15 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async logoutAll(
     @CurrentUser('id') userId: string,
-    @CurrentLanguage() lang: SupportedLanguage, // ADDED: For consistent error messages
+    @CurrentLanguage() lang: SupportedLanguage,
   ) {
     await this.authService.logout(userId);
     return {
-      message: this.authService.getLocalizedMessage(
+      // ✅ FIXED: Use languageService.translate instead of authService.getLocalizedMessage
+      message: this.languageService.translate(
         'auth.messages.logoutAllSuccess',
         lang,
-      ), // IMPROVED: Localized message
+      ),
     };
   }
 }

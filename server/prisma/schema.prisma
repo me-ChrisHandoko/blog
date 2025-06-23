@@ -46,6 +46,12 @@ model User {
   @@index([createdAt]) // Untuk sorting by date
   @@index([preferredLanguage]) // Untuk language grouping
   @@index([lastLoginAt]) // Untuk analytics
+  @@index([email, isActive, deletedAt]) // Optimized login queries
+  @@index([createdAt, deletedAt]) // Pagination optimization
+  @@index([id, isActive]) // Session validation
+  @@index([isActive, isVerified, createdAt]) // Admin dashboard filters
+  @@index([role, createdAt]) // Role-based analytics
+  @@index([lastLoginAt, isActive]) // Activity analytics
   @@map("users") // Nama tabel di database
 }
 
@@ -69,6 +75,9 @@ model Profile {
 
   @@index([birthday]) // Age-based queries
   @@index([createdAt]) // Profile creation date
+  @@index([userId, createdAt]) // User profile lookup with timeline
+  @@index([createdAt, birthday]) // Demographics analytics
+  @@index([phone]) // Phone-based lookup (if needed)
   @@map("profiles")
 }
 
@@ -93,6 +102,9 @@ model ProfileTranslation {
   @@index([profileId, language]) // Sudah ada - bagus
   @@index([firstName, lastName]) // Full name search
   @@index([language, firstName]) // Name search per language
+  @@index([language, lastName, firstName]) // Surname-first search
+  @@index([language, bio]) // Bio search capability
+  @@index([profileId, language, firstName]) // Optimized profile name lookup
   @@map("profile_translations")
 }
 
@@ -170,6 +182,13 @@ model Post {
   @@index([likes]) // Most liked posts
   @@index([createdAt]) // Recent posts
   @@index([status, deletedAt]) // Active posts filter
+  @@index([status, publishedAt, deletedAt]) // Published posts with soft delete
+  @@index([status, views, likes]) // Trending content queries
+  @@index([authorId, publishedAt, status]) // Author timeline analytics
+  @@index([categoryId, publishedAt, views]) // Category performance
+  @@index([publishedAt, views]) // Popular posts by time
+  @@index([authorId, createdAt]) // Author content timeline
+  @@index([slug, status]) // SEO-friendly lookups
   @@map("posts")
 }
 
@@ -287,6 +306,11 @@ model Comment {
   @@index([isApproved, createdAt]) // Moderation queue
   @@index([language]) // Comments per language
   @@index([createdAt]) // Chronological order
+  @@index([parentId, isApproved, createdAt]) // Nested comments optimization
+  @@index([isApproved, createdAt, authorId]) // Moderation workflow
+  @@index([postId, createdAt, isApproved]) // Comment timeline per post
+  @@index([authorId, isApproved, createdAt]) // User comment history
+  @@index([postId, parentId]) // Post thread structure
   @@map("comments")
 }
 
@@ -311,6 +335,11 @@ model Session {
   @@index([expiresAt]) // Cleanup expired sessions
   @@index([isActive, expiresAt]) // Active session validation
   @@index([ipAddress]) // Security monitoring
+  @@index([token, isActive, expiresAt]) // Optimized session validation
+  @@index([ipAddress, userId]) // Security monitoring
+  @@index([isActive, expiresAt, updatedAt]) // Cleanup optimization
+  @@index([userId, createdAt]) // User session history
+  @@index([userAgent, ipAddress]) // Device tracking
   @@map("sessions")
 }
 
